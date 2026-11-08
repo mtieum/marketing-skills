@@ -87,10 +87,10 @@ function card(item, n, opts) {
         ${files ? `<details><summary>Files</summary><ul class="files">${files}</ul></details>` : ''}
         ${v ? `<details><summary>Fact check</summary><div class="check">${mdLite(v)}</div></details>` : ''}
         <div class="actions">
-          <button data-act="approved" class="yes">Approve</button>
-          <button data-act="changes">Change…</button>
-          <button data-act="rejected" class="no">Reject</button>
-          <button data-act="out">Posted…</button>
+          <button data-act="approved" class="yes" data-label="Approve" data-on="Approved ✓">Approve</button>
+          <button data-act="changes" data-label="Change…" data-on="Changes asked">Change…</button>
+          <button data-act="rejected" class="no" data-label="Reject" data-on="Rejected">Reject</button>
+          <button data-act="out" data-label="Posted…" data-on="Posted ✓">Posted…</button>
         </div>
       </div>
     </div>
@@ -141,7 +141,7 @@ details{margin:8px 0;font-size:14px}summary{cursor:pointer;color:var(--muted)}.f
 .v-supported{color:var(--good)}.v-wrong,.v-unsupported{color:var(--bad);font-weight:600}.v-soft{color:var(--warn)}
 button,.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;padding:4px 10px;cursor:pointer;text-decoration:none}
 button:hover,.btn:hover{border-color:var(--accent)}.share{font-weight:600}button.ghost{padding:1px 7px;font-size:12px}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.yes{color:var(--good);border-color:currentColor}.no{color:var(--bad)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.actions button[aria-pressed=true]{cursor:default;opacity:1;background:color-mix(in srgb,currentColor 16%,transparent);font-weight:600}.yes{color:var(--good);border-color:currentColor}.no{color:var(--bad)}
 .hide{display:none}.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:6px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.on{opacity:1}
 @media (max-width:600px){.tabs{flex-wrap:nowrap;overflow-x:auto}.media{flex-basis:100%}.media video,.media img{width:100%}.id{margin-left:0}}
 </style></head><body>
@@ -205,14 +205,22 @@ function render(){
   label();
 }
 /** Each card's to-do line, and the "next up" bar. */
+/** The buttons follow the status: the current one is shown pressed and can't be clicked again; posted items keep only Posted (a rejected one can still be approved). */
+const SAME={ready:'approved',measured:'out'};
+function buttons(c){const st=SAME[c.dataset.status]||c.dataset.status;const done=st==='out';
+  for(const b of c.querySelectorAll('.actions [data-act]')){const on=b.dataset.act===st;
+    b.setAttribute('aria-pressed',on);b.disabled=on;b.textContent=on?b.dataset.on:b.dataset.label;
+    b.classList.toggle('hide',done&&b.dataset.act!=='out')}}
 function label(){
   const now=Date.now();
+  cards.forEach(buttons);
   for(const c of cards){const t=c.querySelector('.todo');const w=when(c);
     if(isDone(c)||!w){t.textContent='';continue}
     const d=w-now;const g=c.dataset.gateway;
     // Handed to a gateway: it posts by itself; a failure goes back to a person.
     if(g==='scheduled'||g==='publishing'){t.textContent=g==='publishing'?'Posting now…':'Auto-posts in '+ago(d);t.classList.remove('late');continue}
     if(g==='failed'){t.textContent='Auto-post failed: post by hand ('+(c.dataset.gatewayError||'see the gateway')+')';t.classList.add('late');continue}
+    if(c.dataset.auto&&!needsYes(c)&&d>0){t.textContent='Auto-posts in '+ago(d);t.classList.remove('late');continue}
     const verb=needsYes(c)?(c.dataset.auto?'Approve to auto-post':'Approve, then post'):'Post';
     t.textContent=d<0?verb+' (due '+ago(d)+' ago)':verb+' in '+ago(d);t.classList.toggle('late',d<0)}
   const next=cards.filter(c=>!isDone(c)&&when(c)&&!['scheduled','publishing'].includes(c.dataset.gateway)).sort((a,b)=>when(a)-when(b))[0];
