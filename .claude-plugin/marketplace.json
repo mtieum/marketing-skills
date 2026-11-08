@@ -1,0 +1,11 @@
+{
+  "name": "marketing-skills",
+  "owner": { "name": "Tieum" },
+  "plugins": [
+    {
+      "name": "marketing",
+      "source": "./",
+      "description": "Brand-agnostic marketing skills: plan, produce, verify, review, publish, measure."
+    }
+  ]
+}
