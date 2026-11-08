@@ -8,6 +8,8 @@
 //                   "pinterest": { "id": "ch_…", "auto": true } } }
 //
 // R2: sent/<id>.json  { hash, at, status, url, error }  what the gateway has, and its last word.
+import { copyBlocks } from '../../tools/board-page.mjs';
+
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 async function hmac(key, data) {
@@ -30,15 +32,14 @@ export async function mediaAllowed(env, key, exp, sig) {
 }
 
 // --- The post, as the protocol wants it -----------------------------------------------
-/** The item's fields: fenced blocks under a label ("Title:", "Alt text:") become text fields; plain text is the caption. */
+/** The item's fields, as the board shows them (labelled blocks or sections); plain text is the caption. */
 function textOf(item) {
-  const fences = [...item.text.matchAll(/(?:^|\n)([^\n]*)\n```[^\n]*\n([\s\S]*?)\n```/g)];
-  if (!fences.length) return { caption: item.text };
+  const blocks = copyBlocks(item.text);
+  if (blocks.length === 1 && !blocks[0].label) return { caption: item.text.trim() };
   const t = {};
-  for (const [, label, body] of fences) {
-    const k = label.replace(/[:#*]/g, '').trim().toLowerCase();
-    const key = { 'alt text': 'alt', alt: 'alt', 'text to paste': 'caption' }[k] ?? k;
-    t[key] = body;
+  for (const { label, body } of blocks) {
+    const k = label.toLowerCase();
+    t[{ 'alt text': 'alt', 'text to paste': 'caption' }[k] ?? k] = body;
   }
   return t;
 }

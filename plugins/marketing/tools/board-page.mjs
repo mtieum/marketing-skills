@@ -39,9 +39,19 @@ function verdicts(md, status) {
 }
 
 /** The text to paste: fenced blocks if the item has them (several fields), else the whole text. */
-function copyBlocks(text) {
+/**
+ * A post's paste-ready parts: fenced blocks under a label line ("Title:" then ```…```), or
+ * sections under a capitals label on its own line ("TITLE:", "DESCRIPTION:"); else the whole text.
+ */
+export function copyBlocks(text) {
   const fences = [...text.matchAll(/(?:^|\n)([^\n]*)\n```[^\n]*\n([\s\S]*?)\n```/g)];
   if (fences.length) return fences.map(([, label, body]) => ({ label: label.replace(/[:#*]/g, '').trim(), body }));
+  const parts = text.split(/^([A-Z][A-Z ]{1,30}):[ \t]*$/m);
+  if (parts.length > 2 && !parts[0].trim()) {
+    const out = [];
+    for (let i = 1; i < parts.length; i += 2) out.push({ label: parts[i].charAt(0) + parts[i].slice(1).toLowerCase(), body: parts[i + 1].trim() });
+    return out;
+  }
   return [{ label: '', body: text }];
 }
 
