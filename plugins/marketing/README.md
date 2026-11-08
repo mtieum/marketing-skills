@@ -38,7 +38,7 @@ that brand's **workspace**, a `marketing/` folder in the brand's own project.
 | `outreach` | Finds the right people (press, bloggers, partners), writes personal pitches, tracks replies. |
 | `paid-test` | A small capped ad test: hypothesis, audience, copy variants, budget, stop rules, setup sheet. |
 | `fact-gate` | A separate agent checks every factual claim against a source. Nothing ships unchecked. |
-| `review` | Gathers everything waiting into one review file and applies your decisions. Or review in the browser: `node tools/board.mjs marketing` shows every item with its video, Copy buttons and Approve / Change / Reject / Posted, written back into the queue. |
+| `review` | Gathers everything waiting into one review file and applies your decisions. Or review in the browser: `node tools/board.mjs marketing` shows the queue in tabs by day (opening on what is due next), with each video, Copy buttons, Approve / Change / Reject / Posted written back into the queue, and reminders (calendar file and browser notifications) 15 minutes before each post. |
 | `report` | Pulls the numbers, compares them with the plan, says what to do more and less of. |
 
 ## Install

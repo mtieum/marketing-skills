@@ -28,11 +28,14 @@ Nothing reaches the outside world except through here, and only on the owner's d
 4. Tell the owner where the sheet is. They can edit it, or just reply ("approve all but 4;
    change 7 to …").
 5. Offer the **review board** too, the easier way for most owners: every queue item in the
-   browser with its video or image playing, the text with Copy buttons, the link, the fact check,
-   and Approve / Change / Reject / Posted buttons that write the decision into the item
+   browser, in tabs by day (Overdue, Today, Tomorrow, each date ahead, All, Done; it opens on
+   what needs doing first), a "Next up" bar with the time left, each item's video or image, the
+   text with Copy buttons, the link, the fact check, and Approve / Change / Reject / Posted buttons that write the decision into the item
    (`status`, `decided`, `owner_note`, `out_url`). Start it in the background:
    `node ${CLAUDE_PLUGIN_ROOT}/tools/board.mjs marketing` (opens http://localhost:4747; `PORT=`
-   to change, `NO_OPEN=1` to not open a browser). It serves only the queue's own asset files,
+   to change, `NO_OPEN=1` to not open a browser). Reminders: **Add to calendar** downloads every
+   post still to do as an .ics with an alarm 15 minutes before (re-download after changes);
+   **Notify me** gives browser notifications at the same time while the tab is open. It serves only the queue's own asset files,
    on this machine only. An item that reuses another's text can point at its check with
    `checked_as: <other item id>`.
 
