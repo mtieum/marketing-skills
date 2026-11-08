@@ -1,0 +1,23 @@
+{
+  "slug": "example",
+  "title": "An example short",
+  "link": "https://example.com/",
+  "sections": [
+    {
+      "vo": "One clear promise in the first two seconds.",
+      "hook": { "lead": "A small lead line", "title": "Title" },
+      "shots": [{ "kind": "photo", "src": "example/shots/opening.jpg", "move": "in", "credit": "Photo: Author, CC BY 4.0, via Wikimedia Commons (https://commons.wikimedia.org/wiki/File:…)" }]
+    },
+    {
+      "vo": "Then a beat: one real thing, named on a card.",
+      "chapter": "Part one",
+      "card": { "kicker": "First", "title": "A real thing", "note": "One fact" },
+      "shots": [{ "kind": "clip", "src": "example/shots/beat.mp4", "from": 1, "credit": "Video: someone, via Pixabay (https://pixabay.com/videos/id-…/)" }]
+    },
+    {
+      "vo": "And where to find it all.",
+      "end": true,
+      "shots": [{ "kind": "screen", "src": "example/shots/page.png", "backdrop": "example/shots/beat.mp4", "credit": "Video: someone, via Pixabay (https://pixabay.com/videos/id-…/)" }]
+    }
+  ]
+}

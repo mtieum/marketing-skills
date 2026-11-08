@@ -1,0 +1,20 @@
+{
+  "name": "Your brand",
+  "colours": {
+    "background": "#101828",
+    "deep": "#0b1220",
+    "surface": "#1d2939",
+    "text": "#f9fafb",
+    "muted": "#98a2b3",
+    "accent": "#f79009"
+  },
+  "fonts": { "display": "fonts/display.woff2", "text": "fonts/text.woff2" },
+  "logo": { "onDark": "logo/logo-on-dark.svg", "icon": "logo/icon.svg" },
+  "hook": { "lead": "" },
+  "endCard": { "line": "", "showAddress": true },
+  "map": {
+    "style": "https://tiles.openfreemap.org/styles/positron",
+    "attribution": "© OpenFreeMap © OpenMapTiles © OpenStreetMap"
+  },
+  "music": { "file": "music/bed.mp3", "credit": "" }
+}

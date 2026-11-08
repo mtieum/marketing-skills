@@ -1,0 +1,7 @@
+{
+  "media": "media",
+  "contact": "",
+  "remotionLicence": "",
+  "voice": { "provider": "", "voice": "", "speed": 1.0, "credit": "" },
+  "upload": { "name": "{slug}" }
+}

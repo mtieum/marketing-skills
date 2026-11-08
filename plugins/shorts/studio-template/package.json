@@ -1,0 +1,27 @@
+{
+  "name": "shorts-studio",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "doctor": "node tools/doctor.mjs",
+    "brand": "node tools/brand.mjs",
+    "preview": "node tools/brand.mjs --preview",
+    "studio": "node tools/brand.mjs && node tools/index.mjs && remotion studio",
+    "build": "bash tools/build.sh"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "@remotion/media": "4.0.535",
+    "@remotion/media-utils": "4.0.535",
+    "maplibre-gl": "6.14.0",
+    "playwright": "1.60.0",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.10",
+    "typescript": "5.9.3"
+  }
+}

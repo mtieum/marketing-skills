@@ -4,8 +4,13 @@
   "plugins": [
     {
       "name": "marketing",
-      "source": "./",
+      "source": "./plugins/marketing",
       "description": "Brand-agnostic marketing skills: plan, produce, verify, review, publish, measure."
+    },
+    {
+      "name": "shorts",
+      "source": "./plugins/shorts",
+      "description": "Branded short videos with Remotion: guided setup, designer brand kits, credited footage, voice, render and post notes."
     }
   ]
 }
