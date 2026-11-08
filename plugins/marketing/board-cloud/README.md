@@ -49,6 +49,16 @@ board writes), then uploads the queue and any new or changed files. Run it after
 changes, and before working on approved items; `--test-push` also sends a test notification.
 The `marketing:review` skill runs it for you when `.board.env` exists.
 
+**Automatically**, every 5 minutes, while the computer is on: a cron line (`crontab -e`)
+
+```
+*/5 * * * * cd /path/to/project && /path/to/node /path/to/plugin/tools/board-sync.mjs marketing >> /tmp/board-sync.log 2>&1
+```
+
+or, on Linux with systemd, a user timer (`~/.config/systemd/user/review-board-sync.{service,timer}`,
+`OnUnitActiveSec=5min`, then `systemctl --user enable --now review-board-sync.timer`). Use
+absolute paths: cron and systemd don't load your shell's PATH (nvm users especially).
+
 ## On the phone
 
 1. Open the address, sign in.
