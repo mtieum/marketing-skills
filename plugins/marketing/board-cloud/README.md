@@ -9,7 +9,8 @@ The same board as `tools/board.mjs`, hosted on **your own Cloudflare account** s
   the caption already copied (paste it, post, then tap *Posted* on the board).
 
 Nothing posts by itself: the apps only let approved partners do that, and the board is a gate,
-not a robot.
+not a robot. Posting automatically, once approved, is the job of an optional publishing gateway:
+see `../publish/PROTOCOL.md` (the board side of it is coming next).
 
 ## What it costs and holds
 
