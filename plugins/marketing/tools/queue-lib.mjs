@@ -59,12 +59,23 @@ export function verification(ws, item) {
   return existsSync(f) ? readFileSync(f, 'utf8') : null;
 }
 
+/** A post's link without the share-tracking bits the apps add when you copy it (Instagram, TikTok). */
+export function cleanUrl(u) {
+  try {
+    const url = new URL(u);
+    if (/(^|\.)(instagram|tiktok)\.com$/.test(url.hostname)) url.search = '';
+    return url.toString();
+  } catch {
+    return u;
+  }
+}
+
 /** A decision as front-matter changes: what the board writes, locally or after a sync. */
 export function decisionChanges({ status, note, out_url, at }) {
   const day = (at ? new Date(at) : new Date()).toISOString().slice(0, 10);
   const changes = { status, decided: day };
   if (note) changes.owner_note = String(note).replace(/\n/g, ' ');
-  if (out_url) changes.out_url = String(out_url);
+  if (out_url) changes.out_url = cleanUrl(String(out_url));
   if (status === 'out') changes.out = day;
   return changes;
 }
