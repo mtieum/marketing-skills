@@ -10,7 +10,7 @@ The same board as `tools/board.mjs`, hosted on **your own Cloudflare account** s
 
 Nothing posts by itself: the apps only let approved partners do that, and the board is a gate,
 not a robot. Posting automatically, once approved, is the job of an optional publishing gateway:
-see `../publish/PROTOCOL.md` (the board side of it is coming next).
+see *Posting automatically* below and `../publish/PROTOCOL.md`.
 
 ## What it costs and holds
 
@@ -70,6 +70,31 @@ absolute paths: cron and systemd don't load your shell's PATH (nvm users especia
 4. When a reminder comes: open it, check the card, tap **Share to app** (it fetches the video;
    tap again to share; the caption is copied), pick the app, paste, post, then **Posted…**
    with the post's link.
+
+## Posting automatically (a gateway)
+
+Optional. A publishing gateway (any service speaking `../publish/PROTOCOL.md`) holds your
+connected accounts and posts at the scheduled time. Turn it on per channel:
+
+1. Get an API key and callback secret from the gateway, and connect your channels there.
+2. Store them on the board: `npx wrangler secret put GATEWAY_KEY` and
+   `npx wrangler secret put GATEWAY_CALLBACK_SECRET`.
+3. Add `publish.json` to the workspace, naming the gateway's channel ids (its `GET /v0/channels`):
+   ```json
+   { "gateway": "https://gateway.example",
+     "channels": {
+       "instagram": { "id": "ch_…", "auto": true, "options": { "ai_generated": true } },
+       "pinterest": { "id": "ch_…", "auto": true } } }
+   ```
+4. Sync. From then on, every 5 minutes the board:
+   - sends each **approved** item for an `auto` channel to the gateway, with its time and a signed
+     link to its file (valid until two days after the time);
+   - re-sends it if you edit it, and cancels it if you pull it back (changes, rejected) before it goes;
+   - reads back the result: posted → the item becomes Posted with the link (in the files at the
+     next sync); failed → a push notification to post it by hand.
+
+Cards say *Auto-posts in …* for what the gateway has. Channels without `auto` stay on
+reminders and Share to app. Nothing is sent that you didn't approve.
 
 ## How it works
 

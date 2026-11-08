@@ -1,6 +1,6 @@
 {
   "name": "marketing",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Run a small brand's marketing with Claude: profile, plan, campaigns, channel content, data stories, outreach, small paid tests, a weekly review gate and a weekly report. Drafts and queues; a person approves before anything goes out.",
   "author": { "name": "Tieum" }
 }

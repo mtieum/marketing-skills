@@ -66,7 +66,7 @@ function card(item, n, opts) {
       <pre>${esc(b.body)}</pre>
     </div>`).join('');
   return `
-  <article class="card" id="${esc(meta.id ?? item.file.replace(/\.md$/, ''))}" data-status="${esc(meta.status ?? 'draft')}" data-channel="${esc(meta.channel)}" data-file="${esc(item.file)}" data-due="${esc(meta.due ?? '')}" data-time="${esc(meta.time ?? '')}" data-title="${esc(title(item))}">
+  <article class="card" id="${esc(meta.id ?? item.file.replace(/\.md$/, ''))}" data-status="${esc(meta.status ?? 'draft')}" data-channel="${esc(meta.channel)}" data-file="${esc(item.file)}" data-due="${esc(meta.due ?? '')}" data-time="${esc(meta.time ?? '')}" data-title="${esc(title(item))}" data-auto="${esc(meta.auto ?? '')}" data-gateway="${esc(meta.gateway ?? '')}" data-gateway-error="${esc(meta.gateway_error ?? '')}">
     <header>
       <span class="n">${n}</span>
       <span class="todo"></span>
@@ -209,9 +209,13 @@ function label(){
   const now=Date.now();
   for(const c of cards){const t=c.querySelector('.todo');const w=when(c);
     if(isDone(c)||!w){t.textContent='';continue}
-    const d=w-now;const verb=needsYes(c)?'Approve, then post':'Post';
+    const d=w-now;const g=c.dataset.gateway;
+    // Handed to a gateway: it posts by itself; a failure goes back to a person.
+    if(g==='scheduled'||g==='publishing'){t.textContent=g==='publishing'?'Posting now…':'Auto-posts in '+ago(d);t.classList.remove('late');continue}
+    if(g==='failed'){t.textContent='Auto-post failed: post by hand ('+(c.dataset.gatewayError||'see the gateway')+')';t.classList.add('late');continue}
+    const verb=needsYes(c)?(c.dataset.auto?'Approve to auto-post':'Approve, then post'):'Post';
     t.textContent=d<0?verb+' (due '+ago(d)+' ago)':verb+' in '+ago(d);t.classList.toggle('late',d<0)}
-  const next=cards.filter(c=>!isDone(c)&&when(c)).sort((a,b)=>when(a)-when(b))[0];
+  const next=cards.filter(c=>!isDone(c)&&when(c)&&!['scheduled','publishing'].includes(c.dataset.gateway)).sort((a,b)=>when(a)-when(b))[0];
   const bar=document.getElementById('next');
   if(!next){bar.classList.add('hide');return}
   const d=when(next)-now;

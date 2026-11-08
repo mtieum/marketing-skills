@@ -10,6 +10,7 @@
 //   subs/<hash>.json      push subscriptions (one per phone or browser)
 //   notified/<id>         reminders already sent
 import { DONE, calendar, page, title } from '../../tools/board-page.mjs';
+import { gatewayCallback, gatewayStates, mediaAllowed, syncGateway } from './gateway.mjs';
 
 const LEAD_MIN = 15;
 const STATUSES = new Set(['approved', 'rejected', 'changes', 'out']);
@@ -93,6 +94,8 @@ function zoned(date, time, tz) {
 }
 const dueAt = (it, env) => (it.meta.due ? zoned(it.meta.due, it.meta.time, env.BOARD_TZ || 'UTC') : null);
 const todo = (it) => !DONE.has(it.meta.status ?? 'draft');
+/** Handed to the gateway and on its way: no reminder needed (a failure sends its own). */
+const auto = (it) => ['scheduled', 'publishing', 'published'].includes(it.meta.gateway);
 const needsYes = (it) => ['draft', 'checked', 'changes'].includes(it.meta.status ?? 'draft');
 
 // --- Files (R2), with ranges so videos seek ---------------------------------
@@ -101,13 +104,16 @@ async function serveAsset(req, env, url) {
   const p = url.searchParams.get('p') ?? '';
   const key = q.items.map((i) => i.assetKeys?.[p]).find(Boolean);
   if (!key) return text('not an asset of any queue item', 404);
+  return serveKey(req, env, url, key, p.split('/').pop());
+}
+async function serveKey(req, env, url, key, name) {
   const range = req.headers.get('range')?.match(/bytes=(\d*)-(\d*)/);
   const head = await env.BUCKET.head(key);
   if (!head) return text('not synced yet', 404);
   const size = head.size;
   const type = head.httpMetadata?.contentType ?? 'application/octet-stream';
   const base = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=86400' };
-  if (url.searchParams.has('dl')) base['content-disposition'] = `attachment; filename="${p.split('/').pop().replace(/"/g, '')}"`;
+  if (url.searchParams.has('dl')) base['content-disposition'] = `attachment; filename="${String(name).replace(/"/g, '')}"`;
   if (range && (range[1] || range[2])) {
     const start = range[1] ? Number(range[1]) : size - Number(range[2]);
     const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
@@ -144,11 +150,23 @@ async function pushAll(env) {
   }
   return sent;
 }
-/** What the notification says: the next post due, from LEAD_MIN before it to an hour after. */
+/** Something to tell the owner now (a failed post): pushed, and shown by the next notification. */
+async function notify(env, title, body, id) {
+  await env.BUCKET.put('notice.json', JSON.stringify({ title, body, url: id ? `/#${id}` : '/', tag: id ?? 'notice', at: Date.now() }));
+  await pushAll(env);
+}
+
+/** What the notification says: a fresh notice first, else the next post due, from LEAD_MIN before it to an hour after. */
 async function nextUp(env) {
+  const n = await (await env.BUCKET.get('notice.json'))?.json();
+  if (n && Date.now() - n.at < 15 * 60000) {
+    await env.BUCKET.delete('notice.json');
+    return n;
+  }
   const q = await loadQueue(env);
   const now = Date.now();
-  const due = q.items.filter((i) => todo(i) && dueAt(i, env) !== null && now >= dueAt(i, env) - (LEAD_MIN + 5) * 60000 && now < dueAt(i, env) + 3600000)
+  await gatewayStates(env, q);
+  const due = q.items.filter((i) => todo(i) && !auto(i) && dueAt(i, env) !== null && now >= dueAt(i, env) - (LEAD_MIN + 5) * 60000 && now < dueAt(i, env) + 3600000)
     .sort((a, b) => dueAt(a, env) - dueAt(b, env));
   if (!due.length) return { title: 'Review board', body: 'Nothing due right now.', url: '/' };
   const it = due[0];
@@ -161,10 +179,18 @@ async function nextUp(env) {
 }
 async function remind(env) {
   const q = await loadQueue(env);
+  if (q.origin) {
+    try {
+      await syncGateway(env, q.origin, q, { zonedDue: (it) => dueAt(it, env), notify: (t, b, id) => notify(env, t, b, id) });
+    } catch (e) {
+      console.log('gateway', e?.stack ?? e);
+    }
+  }
+  await gatewayStates(env, q);
   const now = Date.now();
   for (const it of q.items) {
     const at = dueAt(it, env);
-    if (!todo(it) || at === null || now < at - LEAD_MIN * 60000 || now > at + 3600000) continue;
+    if (!todo(it) || auto(it) || at === null || now < at - LEAD_MIN * 60000 || now > at + 3600000) continue;
     const mark = `notified/${idOf(it)}`;
     if (await env.BUCKET.head(mark)) continue;
     await env.BUCKET.put(mark, String(now));
@@ -239,6 +265,13 @@ export default {
     const url = new URL(req.url);
     if (!env.BOARD_PASSWORD || !env.SYNC_TOKEN) return text('Set the BOARD_PASSWORD and SYNC_TOKEN secrets (see board-cloud/README.md).', 500);
     if (url.pathname.startsWith('/api/sync/')) return syncApi(req, env, url);
+    // A stored file by signed link, for the gateway and the platforms (no sign-in: the link is the key).
+    const media = url.pathname.match(/^\/media\/(a\/[\w.-]+)$/);
+    if (media && req.method === 'GET') {
+      if (!(await mediaAllowed(env, media[1], url.searchParams.get('exp'), url.searchParams.get('sig')))) return text('link expired or wrong', 403);
+      return serveKey(req, env, url, media[1], media[1].slice(2));
+    }
+    if (url.pathname === '/api/gateway/callback' && req.method === 'POST') return gatewayCallback(req, env, await loadQueue(env), (t, b, id) => notify(env, t, b, id));
     if (url.pathname === '/login') return req.method === 'POST' ? login(req, env) : loginPage();
     if (!(await signedIn(req, env))) {
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '')) return loginPage();
@@ -249,6 +282,7 @@ export default {
 
     if (req.method === 'GET' && url.pathname === '/') {
       const q = await loadQueue(env);
+      await gatewayStates(env, q);
       return html(page(q.items, { cloud: true, vapidPublic: env.VAPID_PUBLIC }));
     }
     if (req.method === 'GET' && url.pathname === '/asset') return serveAsset(req, env, url);

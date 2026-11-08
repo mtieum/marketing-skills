@@ -71,7 +71,10 @@ for (const it of all) {
 }
 
 // --- 3. Queue up, then clear the decisions now in the files ------------------
-const payload = { items: all.map(({ file, meta, text, assetKeys }) => ({ file, meta, text, assetKeys, verification: verification(ws, { meta, file }) })) };
+// Which channels post through a gateway (publish.json), and where the board lives (for its signed links).
+const publishFile = join(ws, 'publish.json');
+const publish = existsSync(publishFile) ? JSON.parse(readFileSync(publishFile, 'utf8')) : null;
+const payload = { origin: URL_, publish, items: all.map(({ file, meta, text, assetKeys }) => ({ file, meta, text, assetKeys, verification: verification(ws, { meta, file }) })) };
 const res = await (await api('PUT', '/api/sync/queue', JSON.stringify(payload), { 'content-type': 'application/json' })).json();
 if (applied.length) await api('POST', '/api/sync/ack', JSON.stringify({ done: applied }), { 'content-type': 'application/json' });
 console.log(`synced ${res.items} items to ${URL_}: ${applied.length} decision(s) in, ${uploaded} file(s) uploaded, ${res.removed} old file(s) removed`);
