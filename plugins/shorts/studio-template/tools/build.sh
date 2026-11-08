@@ -13,7 +13,8 @@ dir="$media/$slug/video"
 mkdir -p "$dir"
 node tools/brand.mjs >/dev/null
 node tools/index.mjs >/dev/null
-render() { npx remotion render src/index.ts "$slug" "$@" --log=error; }
+# A generous timeout: map tiles come over the network and a busy machine renders slowly.
+render() { npx remotion render src/index.ts "$slug" "$@" --timeout=120000 --log=error; }
 
 if [ "$only" = "--draft" ]; then
   node tools/check.mjs "$slug" --draft

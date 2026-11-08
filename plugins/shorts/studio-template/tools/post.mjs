@@ -1,9 +1,9 @@
-// Writes <media>/<slug>/upload/post.md: the facts every post needs (file, length, link) and the
+// Writes <media>/<slug>/upload/post.md (or post.new.md beside an existing one, never over it): the facts every post needs (file, length, link) and the
 // full credits, gathered from the short itself so none is typed from memory. The captions per
 // platform are written after, by a person or the marketing plugin's short-video playbook.
 //   node tools/post.mjs <slug>
 import { execFileSync } from 'node:child_process';
-import { readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MEDIA, readShort, studio } from './lib.mjs';
 import kit from '../src/generated/brand.json' with { type: 'json' };
@@ -62,5 +62,7 @@ TODO: two lines about the short, the link, then the credits
 ${synthetic ? `- The voice is synthetic (${studio.voice.provider}). TikTok asks for its "AI-generated" label on realistic AI content; turning it on is the safe choice. YouTube's "altered or synthetic" setting is for realistic people, places or events that didn't happen.\n` : ''}- Music: use only what the credits above allow on each platform; tracks from a platform's own library may not be cleared elsewhere.
 - Watch it once on a phone with the sound off: every word should read without the voice.
 `;
-writeFileSync(join(up, 'post.md'), md);
-console.log(`post notes: ${join(up, 'post.md')}`);
+// Never overwrite notes someone has written: a rebuild's fresh notes go beside them.
+const target = existsSync(join(up, 'post.md')) ? 'post.new.md' : 'post.md';
+writeFileSync(join(up, target), md);
+console.log(`post notes: ${join(up, target)}${target === 'post.new.md' ? ' (post.md already exists and was left as it is: compare the credits)' : ''}`);

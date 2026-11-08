@@ -1,7 +1,7 @@
 import { Map as MapLibre, setWorkerUrl, type Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
-import { AbsoluteFill, Easing, continueRender, delayRender, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Easing, cancelRender, continueRender, delayRender, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { brand, colour, display, text } from '../brand';
 import type { Stop } from '../types';
 
@@ -50,7 +50,9 @@ export function MapScene({ from, to }: { from: Stop; to: Stop }) {
           setMap(mapped);
           continueRender(ready);
         });
-      });
+      })
+      // Fail at once with the reason, rather than wait out the render's timeout.
+      .catch((e) => cancelRender(new Error(`map style ${map.style} could not be loaded: ${e?.message ?? e}`)));
     return () => {
       gone = true;
     };

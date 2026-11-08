@@ -63,6 +63,23 @@ export function Short(props: ShortProps) {
   useBrandFonts();
   const { short, timed, stem } = props;
   const rail = useChapters(props);
+  // An audio stem needs no pictures: rendering only the sound skips the maps and clips, and takes seconds.
+  if (stem) {
+    return (
+      <AbsoluteFill>
+        {stem === 'voice' &&
+          short.sections.map((section, i) => {
+            const t = timed[i];
+            return t && section.voice ? (
+              <Sequence key={i} from={t.start} durationInFrames={t.frames}>
+                <Audio src={staticFile(section.voice)} />
+              </Sequence>
+            ) : null;
+          })}
+        {stem === 'music' && brand.music && <Audio src={staticFile(brand.music.file)} volume={(f) => musicLevel(f, props)} />}
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ background: colour.background }}>
       {short.sections.map((section, i) => {
