@@ -27,11 +27,20 @@ Nothing reaches the outside world except through here, and only on the owner's d
    the owner's eye.
 4. Tell the owner where the sheet is. They can edit it, or just reply ("approve all but 4;
    change 7 to …").
+5. Offer the **review board** too, the easier way for most owners: every queue item in the
+   browser with its video or image playing, the text with Copy buttons, the link, the fact check,
+   and Approve / Change / Reject / Posted buttons that write the decision into the item
+   (`status`, `decided`, `owner_note`, `out_url`). Start it in the background:
+   `node ${CLAUDE_PLUGIN_ROOT}/tools/board.mjs marketing` (opens http://localhost:4747; `PORT=`
+   to change, `NO_OPEN=1` to not open a browser). It serves only the queue's own asset files,
+   on this machine only. An item that reuses another's text can point at its check with
+   `checked_as: <other item id>`.
 
 ## Apply mode
 
-1. Read the decisions (from the edited sheet or the owner's message). Anything still `?` is
-   left waiting, not assumed.
+1. Read the decisions: from the edited sheet, the owner's message, or the items themselves
+   (the board writes `status: approved | rejected | changes` with `decided:` and `owner_note:`).
+   Anything still `?` is left waiting, not assumed.
 2. **approve** → status `approved`, then by kind:
    - posts, pins, videos, LinkedIn, Reddit, newsletter → add to `publish/<week-start>/` posting
      pack: one file per day, each entry with the platform, the exact text (in a fenced block so
