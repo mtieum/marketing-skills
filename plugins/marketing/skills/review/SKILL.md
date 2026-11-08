@@ -38,10 +38,17 @@ Nothing reaches the outside world except through here, and only on the owner's d
    **Notify me** gives browser notifications at the same time while the tab is open. It serves only the queue's own asset files,
    on this machine only. An item that reuses another's text can point at its check with
    `checked_as: <other item id>`.
+6. **On the phone**: if the workspace has `.board.env`, the board is also hosted on the owner's
+   Cloudflare (see `board-cloud/README.md`: installable, push reminders 15 minutes before each
+   post, Share to app). Run `node ${CLAUDE_PLUGIN_ROOT}/tools/board-sync.mjs marketing` after
+   preparing, so the phone shows the new items. If the owner wants it and there's no
+   `.board.env` yet, set it up with `board-cloud/setup.mjs` (it needs `npx wrangler login`).
 
 ## Apply mode
 
-1. Read the decisions: from the edited sheet, the owner's message, or the items themselves
+1. If `.board.env` exists, run `board-sync.mjs` first: decisions made on the phone come into
+   the item files.
+   Read the decisions: from the edited sheet, the owner's message, or the items themselves
    (the board writes `status: approved | rejected | changes` with `decided:` and `owner_note:`).
    Anything still `?` is left waiting, not assumed.
 2. **approve** → status `approved`, then by kind:

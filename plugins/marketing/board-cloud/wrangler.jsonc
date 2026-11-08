@@ -1,0 +1,16 @@
+// The hosted review board. Deploy to your own Cloudflare account: see README.md.
+{
+  "name": "review-board",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  // The manifest, service worker and icons are served as they are (no sign-in needed for those).
+  "assets": { "directory": "./public" },
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "review-board" }],
+  // Every 5 minutes: push a reminder for anything due in the next 15.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    // The time zone the queue's times are in.
+    "BOARD_TZ": "Europe/London"
+  },
+  "observability": { "enabled": true }
+}

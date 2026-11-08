@@ -1,0 +1,10 @@
+{
+  "name": "review-board",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": { "wrangler": "^4.40.0" }
+}
