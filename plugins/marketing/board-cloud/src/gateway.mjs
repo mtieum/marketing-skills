@@ -88,7 +88,14 @@ async function record(env, id, file, sent, post, notify) {
   Object.assign(sent, { status: post.status, url: post.url ?? null, error: post.error ?? null, checked: new Date().toISOString() });
   await putSent(env, id, sent);
   if (post.status === 'published' && was !== 'published') {
-    await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'out', out_url: post.url ?? undefined, note: 'posted by the gateway', at: new Date().toISOString() }));
+    if (sent.private) {
+      // Uploaded but not public (the platform app isn't approved for public posts yet): the owner
+      // makes it public by hand, then marks it Posted. The link goes on the item meanwhile.
+      await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'ready', out_url: post.url ?? undefined, note: 'uploaded as private by the gateway: make it public, then mark it Posted', at: new Date().toISOString() }));
+      await notify(`Uploaded private: ${id}`, 'Make it public (or schedule it) in the app, then mark it Posted.', id);
+    } else {
+      await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'out', out_url: post.url ?? undefined, note: 'posted by the gateway', at: new Date().toISOString() }));
+    }
   }
   if (post.status === 'failed' && was !== 'failed') await notify(`Didn't post: ${id}`, `${post.error?.message ?? 'the gateway failed'}. Post it by hand.`, id);
 }
@@ -123,7 +130,7 @@ export async function syncGateway(env, origin, q, { zonedDue, notify }) {
     const hash = hex(await crypto.subtle.digest('SHA-256', enc.encode(JSON.stringify({ ...stable, media: media.map((m) => m.bytes) }))));
     if (!sent || (sent.hash !== hash && !['publishing', 'published'].includes(sent.status))) {
       const r = await call(env, cfg, 'PUT', `/v0/posts/${encodeURIComponent(id)}`, post);
-      if (r.ok) await putSent(env, id, { hash, at: new Date().toISOString(), status: r.data.status, url: null, error: null });
+      if (r.ok) await putSent(env, id, { hash, at: new Date().toISOString(), status: r.data.status, url: null, error: null, private: post.options.privacy !== 'public' });
       else {
         const s = { hash, at: new Date().toISOString(), status: 'failed', url: null, error: r.data?.error ?? { code: `http_${r.status}`, message: 'gateway refused it' } };
         if (sent?.error?.code !== s.error.code) await notify(`Can't schedule: ${id}`, `${s.error.message}. It stays on reminders.`, id);
