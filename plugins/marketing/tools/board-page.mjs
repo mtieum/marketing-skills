@@ -8,6 +8,16 @@ const VIDEO = new Set(['.mp4', '.mov', '.webm']);
 const IMAGE = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 export const assetUrl = (p) => `/asset?p=${encodeURIComponent(p)}`;
 
+/** A due date day first, as in the UK: "2026-11-12" → "Thu 12 Nov" (the year only when it isn't this one). */
+export function dayFirst(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ''));
+  if (!m) return String(ymd ?? '');
+  const d = new Date(Date.UTC(+m[1], m[2] - 1, +m[3]));
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()];
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getUTCMonth()];
+  return `${day} ${+m[3]} ${month}${+m[1] !== new Date().getUTCFullYear() ? ` ${m[1]}` : ''}`;
+}
+
 /** A markdown table as an HTML table; other lines as paragraphs. Enough for verification files. */
 function mdLite(md) {
   const out = [];
@@ -81,7 +91,7 @@ function card(item, n, opts) {
       <span class="n">${n}</span>
       <span class="todo"></span>
       <span class="chan">${esc(meta.channel ?? '?')}</span>
-      <span class="when">${esc(meta.due ?? '')} ${esc(meta.time ?? '')}</span>
+      <span class="when">${esc(dayFirst(meta.due))}${meta.due && meta.time ? ', ' : ''}${esc(meta.time ?? '')}</span>
       <span class="status s-${esc(meta.status)}">${esc(meta.status ?? 'draft')}</span>
       ${verdicts(v, meta.status)}
       <span class="id">${esc(meta.id ?? item.file)}</span>
