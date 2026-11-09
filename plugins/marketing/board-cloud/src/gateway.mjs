@@ -91,8 +91,8 @@ async function record(env, id, file, sent, post, notify) {
     if (sent.private) {
       // Uploaded but not public (the platform app isn't approved for public posts yet): the owner
       // makes it public by hand, then marks it Posted. The link goes on the item meanwhile.
-      await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'ready', out_url: post.url ?? undefined, note: 'uploaded as private by the gateway: make it public, then mark it Posted', at: new Date().toISOString() }));
-      await notify(`Uploaded private: ${id}`, 'Make it public (or schedule it) in the app, then mark it Posted.', id);
+      await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'ready', out_url: post.url ?? undefined, note: 'uploaded by the gateway, not public yet (private, or a draft in the inbox): finish it in the app, then mark it Posted', at: new Date().toISOString() }));
+      await notify(`Uploaded, not public yet: ${id}`, 'Finish it in the app (make it public or schedule it, or post the draft from your inbox), then mark it Posted.', id);
     } else {
       await env.BUCKET.put(`decisions/${id}.json`, JSON.stringify({ file, id, status: 'out', out_url: post.url ?? undefined, note: 'posted by the gateway', at: new Date().toISOString() }));
     }

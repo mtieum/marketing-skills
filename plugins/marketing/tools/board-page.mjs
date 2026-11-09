@@ -239,7 +239,7 @@ function label(){
     const d=w-now;const g=c.dataset.gateway;
     // Handed to a gateway: it posts by itself; a failure goes back to a person.
     if(g==='scheduled'||g==='publishing'){t.textContent=g==='publishing'?'Posting now…':'Auto-posts in '+ago(d);t.classList.remove('late');continue}
-    if(g==='published'){t.textContent='Uploaded private: make it public, then tap Posted';t.classList.add('late');continue}
+    if(g==='published'){t.textContent='Uploaded, not public yet: finish it in the app (make it public, or post the draft), then tap Posted';t.classList.add('late');continue}
     if(g==='failed'){t.textContent='Auto-post failed: post by hand ('+(c.dataset.gatewayError||'see the gateway')+')';t.classList.add('late');continue}
     if(c.dataset.auto&&!needsYes(c)&&d>0){t.textContent='Auto-posts in '+ago(d);t.classList.remove('late');continue}
     const verb=needsYes(c)?(c.dataset.auto?'Approve to auto-post':'Approve, then post'):'Post';
