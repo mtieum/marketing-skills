@@ -46,18 +46,25 @@ function textOf(item) {
 
 async function postFor(env, origin, item, ch, publishAt) {
   const MEDIA = /\.(mp4|mov|webm|png|jpe?g|webp|gif)$/i;
-  const path = [].concat(item.meta.assets ?? []).find((p) => MEDIA.test(p) && item.assetKeys?.[p]);
+  const IMAGE = /\.(png|jpe?g|webp)$/i;
+  const uploaded = [].concat(item.meta.assets ?? []).filter((p) => MEDIA.test(p) && item.assetKeys?.[p]);
+  // The post's file: its video if it has one, else its first image. Another image with a video is its cover.
+  const path = uploaded.find((p) => !IMAGE.test(p)) ?? uploaded[0];
   if (!path) return null;
   const key = item.assetKeys[path];
   const head = await env.BUCKET.head(key);
   if (!head) return null;
   const exp = Math.floor(publishAt / 1000) + 2 * 86400; // the protocol asks for a day after; two to be safe
+  const media = { url: await signedMediaUrl(env, origin, key, exp), type: head.httpMetadata?.contentType ?? 'video/mp4', bytes: head.size };
+  const coverPath = media.type.startsWith('video/') ? uploaded.find((p) => IMAGE.test(p)) : null;
+  if (coverPath) media.cover_url = await signedMediaUrl(env, origin, item.assetKeys[coverPath], exp);
+  const coverAt = Number(item.meta.cover_at);
   return {
     channel: ch.id,
     publish_at: new Date(publishAt).toISOString(),
-    media: [{ url: await signedMediaUrl(env, origin, key, exp), type: head.httpMetadata?.contentType ?? 'video/mp4', bytes: head.size }],
+    media: [media],
     text: textOf(item),
-    options: { privacy: 'public', ...(ch.options ?? {}) },
+    options: { privacy: 'public', ...(ch.options ?? {}), ...(Number.isFinite(coverAt) && media.type.startsWith('video/') ? { cover_ms: Math.round(coverAt * 1000) } : {}) },
     approval: { by: 'owner', at: item.meta.decided ? `${item.meta.decided}T00:00:00Z` : new Date().toISOString() },
     callback: `${origin}/api/gateway/callback`,
   };

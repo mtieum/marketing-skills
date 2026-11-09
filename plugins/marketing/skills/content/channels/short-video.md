@@ -22,4 +22,7 @@ SOUND: licensed track from the platform's commercial library, or none
 - Business accounts can only use the platform's commercial music library.
 - Footage: own, or licensed for commercial use and edits, credited. Never AI footage of real places.
 - One video per idea; repost the same video across the three platforms, but write each caption for its platform.
+- One cover everywhere: the frame where the title is on screen. Add the still as an image in the
+  item's `assets` (after the video) and its time as `cover_at` (seconds); set the same frame on
+  every platform, by hand or through the gateway.
 - If the brand has a renderer (see `brand.md` Domain producers), produce its input file too.

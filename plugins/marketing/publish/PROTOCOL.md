@@ -66,7 +66,8 @@ reconnect in the gateway before posts to it can go).
   "publish_at": "2026-11-12T18:00:00+00:00",
   "media": [
     { "url": "https://board.example/media/a/9f2c…mp4?exp=1763060400&sig=…",
-      "type": "video/mp4", "bytes": 116728229 }
+      "type": "video/mp4", "bytes": 116728229,
+      "cover_url": "https://board.example/media/a/41be…jpg?exp=1763060400&sig=…" }
   ],
   "text": {
     "caption": "Two nights in Cologne…",
@@ -76,7 +77,7 @@ reconnect in the gateway before posts to it can go).
     "alt": "Cologne Cathedral above the lit stalls…",
     "board": "Christmas Markets in Europe"
   },
-  "options": { "privacy": "public", "ai_generated": true },
+  "options": { "privacy": "public", "ai_generated": true, "cover_ms": 1000 },
   "approval": { "by": "owner", "at": "2026-11-08T16:40:00Z" },
   "callback": "https://board.example/api/gateway/callback"
 }
@@ -97,6 +98,10 @@ reconnect in the gateway before posts to it can go).
   isn't approved for public posts says so with `privacy_not_allowed` rather than posting
   privately in silence.
 - `options.ai_generated`: sets the platform's AI-content label where there is one.
+- The cover of a video: `media[].cover_url` (an image, signed like the file) and/or
+  `options.cover_ms` (the frame to use, in milliseconds from the start). A gateway uses what each
+  platform takes: an image where it can (YouTube thumbnail, Instagram cover), else the frame time
+  (TikTok, Pinterest). Sending both keeps every platform on the same picture.
 - `approval` is **required**: who approved it and when. A gateway refuses posts without it
   (`not_approved`). It is the owner's consent each platform's terms ask for.
 - `callback`: optional; see Status.

@@ -14,6 +14,7 @@ status: draft                          # see below
 due: 2026-11-12                        # day to go out
 link: https://…?utm_source=pinterest&utm_medium=social&utm_campaign=two-night-itineraries
 assets: [path/to/image.jpg]            # files the item needs, each with its licence/credit
+cover_at: 1                            # video only: the cover frame, in seconds (a still of it can follow the video in assets)
 to: ""                                 # for pitches: the person, from outreach.csv
 checked: ""                            # date the fact gate passed it
 notes: ""                              # reviewer's notes
