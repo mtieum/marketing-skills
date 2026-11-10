@@ -26,7 +26,7 @@ function mdLite(md) {
     if (!rows.length) return;
     const cells = (r) => r.replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
     const [head, , ...rest] = rows;
-    out.push(`<table><tr>${cells(head).map((c) => `<th>${esc(c)}</th>`).join('')}</tr>${rest.map((r) => `<tr>${cells(r).map((c) => `<td class="v-${esc(c.toLowerCase())}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`);
+    out.push(`<table><tr>${cells(head).map((c) => `<th>${esc(c)}</th>`).join('')}</tr>${rest.map((r) => `<tr>${cells(r).map((c) => `<td class="v-${esc(c.toLowerCase().replace(/[^a-z]+/g, '-'))}">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`);
     rows = [];
   };
   for (const line of md.split('\n')) {
@@ -180,7 +180,7 @@ const DONE=new Set(${JSON.stringify([...DONE])});
 const LEAD=15; // minutes before a post that reminders fire
 const CLOUD=${opts.cloud ? 'true' : 'false'};const VAPID=${JSON.stringify(opts.vapidPublic ?? '')};
 if(CLOUD&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
-const cards=[...document.querySelectorAll('.card')];
+const cards=[...document.querySelectorAll('article.card')];
 const pad=(n)=>String(n).padStart(2,'0');
 const ymd=(d)=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const when=(c)=>c.dataset.due?new Date(c.dataset.due+'T'+(c.dataset.time||'09:00')):null;
