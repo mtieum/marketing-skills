@@ -5,7 +5,8 @@
 //   node listen.mjs poll  <workspace>   read the feeds, keep fresh posts that pass the prefilter
 //   node listen.mjs draft <workspace>   score and draft them with the chosen model (or leave them for an agent)
 //   node listen.mjs offer <workspace>   put the best drafts on the board as reply cards, within the limits
-//   node listen.mjs run   <workspace>   all three (for a timer)
+//   node listen.mjs check <workspace>   fact-check new reply cards against the page (a separate model call), fix or cut
+//   node listen.mjs run   <workspace>   all four (for a timer)
 //
 // Config: <workspace>/listen.json (see templates/workspace/listen.json): feeds to read, sources
 // (where posts come from: links_allowed each, set by hand after reading that place's rules). State: <workspace>/listen/
@@ -17,8 +18,8 @@ import { askJson, usesAgent } from './llm.mjs';
 import { items as queueItems, setMeta } from './queue-lib.mjs';
 
 const [cmd, wsArg] = process.argv.slice(2);
-if (!['poll', 'draft', 'offer', 'run'].includes(cmd) || !wsArg) {
-  console.error('usage: listen.mjs poll|draft|offer|run <workspace>');
+if (!['poll', 'draft', 'offer', 'check', 'run'].includes(cmd) || !wsArg) {
+  console.error('usage: listen.mjs poll|draft|offer|check|run <workspace>');
   process.exit(2);
 }
 const WS = wsArg;
@@ -172,7 +173,7 @@ async function draft() {
       const a = await askJson(model, RULES, `${`THE POST (${c.source}):\nTitle: ${c.title}\n${c.body}`}\n\nFACTS:\n${await pageFacts(c.page.url)}\n\nYOUR LAST REPLY:\n${c.reply}\n\nTHE OWNER ASKS: ${it.meta.owner_note ?? ''}\n\n${SHAPE}`, ENV);
       writeJson(candFile(c.id), { ...c, reply: a.reply ?? c.reply });
       writeItem({ ...c, reply: a.reply ?? c.reply }, { link: it.meta.linked === 'yes' }, it.file);
-      setMeta(WS, it.file, { status: 'ready' });
+      setMeta(WS, it.file, { status: 'draft' }); // checked again before it's ready
       console.log(`redrafted ${it.file}`);
     } catch (e) { console.warn(`${it.file}: ${e.message}`); }
   }
@@ -186,7 +187,7 @@ function writeItem(c, { link }, file = `${today()}-reply-${norm(c.source).replac
   const text = link ? `${c.reply.trim()}\n\n${disclosure}` : c.reply.trim();
   const q = (v) => JSON.stringify(String(v ?? ''));
   const fm = [
-    `id: ${file.replace(/\.md$/, '')}`, 'kind: reply', `channel: ${c.platform}`, 'campaign: listening', 'status: ready', `due: ${today()}`,
+    `id: ${file.replace(/\.md$/, '')}`, 'kind: reply', `channel: ${c.platform}`, 'campaign: listening', 'status: draft', `due: ${today()}`,
     `source: ${q(c.source)}`, `thread: ${q(c.url)}`, `thread_title: ${q(c.title)}`, `posted_at: ${q(c.at)}`, `fit: ${c.fit}`,
     `linked: ${link ? 'yes' : 'no'}`, `link: ${q(url)}`, `candidate: ${c.id}`,
     `notes: ${q(`${c.source} · asked ${c.at.slice(0, 16).replace('T', ' ')} UTC · fit ${c.fit}${link ? '' : ' · no link'} · ${c.summary ?? ''}`)}`,
@@ -204,7 +205,7 @@ function offer() {
     if (!state.muted[r.meta.source] || state.muted[r.meta.source] < until) state.muted[r.meta.source] = until;
   }
   // Cards nobody posted within two days: the thread has moved on.
-  for (const r of replies) if (r.meta.status === 'ready' && Date.now() - Date.parse(r.meta.due) > 2 * 86400000) setMeta(WS, r.file, { status: 'rejected', owner_note: 'expired: the thread moved on' });
+  for (const r of replies) if (['draft', 'checked', 'ready'].includes(r.meta.status) && Date.now() - Date.parse(r.meta.due) > 2 * 86400000) setMeta(WS, r.file, { status: 'rejected', owner_note: 'expired: the thread moved on' });
   const history = replies.map((r) => ({ source: r.meta.source, thread: r.meta.thread, linked: r.meta.linked === 'yes', at: Date.parse(r.meta.due), status: r.meta.status }));
   const ready = allCands().filter((c) => c.status === 'drafted').sort((a, b) => b.fit - a.fit);
   let n = 0;
@@ -217,7 +218,7 @@ function offer() {
     }
     const file = writeItem(c, d);
     writeJson(candFile(c.id), { ...c, status: 'offered', queue: file, link_reason: d.reason });
-    history.push({ source: c.source, thread: c.url, linked: d.link, at: Date.now(), status: 'ready' });
+    history.push({ source: c.source, thread: c.url, linked: d.link, at: Date.now(), status: 'draft' });
     n++;
   }
   // Drafts too old to be worth it now.
@@ -226,6 +227,49 @@ function offer() {
   console.log(`offer: ${n} reply card(s) added to the queue`);
 }
 
+// The fact gate for replies. The writer doesn't check its own work: a second call, with none of
+// the drafting context, gets only the reply and the page it relies on, and judges each claim.
+const CHECK = `You check a short forum reply before it is posted. Extract every checkable claim (place names,
+what is where, opening days and times, prices, dates, durations, "only/first/oldest") and judge each
+against the SOURCE text only. Verdicts: SUPPORTED (quote the source words), WRONG (give the right
+text), UNSUPPORTED (not in the source: give a replacement or "cut"), SOFT (advice or opinion, fine as such).
+Then give the reply with every WRONG fixed and every UNSUPPORTED claim cut, still reading naturally.
+Answer with JSON only: {"claims": [{"claim": str, "verdict": str, "source": str, "fix": str}], "fixed_reply": str}`;
+
+function verificationMd(id, rows, note) {
+  const cell = (s) => String(s ?? '').replace(/\|/g, '/').replace(/\n/g, ' ');
+  return `# ${id}\n\nChecked ${today()}: ${note}\n\n| claim | verdict | source | fix |\n|---|---|---|---|\n${rows.map((r) => `| ${cell(r.claim)} | ${cell(r.verdict).toUpperCase()} | ${cell(r.source)} | ${cell(r.fix) || 'none'} |`).join('\n')}\n`;
+}
+
+async function check() {
+  const model = cfg.model;
+  const waiting = queueItems(WS).filter((i) => i.meta.kind === 'reply' && i.meta.status === 'draft');
+  if (usesAgent(model)) {
+    if (waiting.length) console.log(`check: ${waiting.length} reply card(s) wait for the fact gate (model provider "agent": run the listen skill)`);
+    return;
+  }
+  const dir = join(WS, 'campaigns', 'listening', 'verification');
+  mkdirSync(dir, { recursive: true });
+  for (const it of waiting) {
+    const id = it.meta.id ?? it.file.replace(/\.md$/, '');
+    const pageUrl = String(it.meta.link ?? '').split('?')[0];
+    try {
+      const block = it.text.match(/```[^\n]*\n([\s\S]*?)\n```/)?.[1] ?? it.text;
+      const [reply, disclosure] = block.includes(pageUrl) ? [block.slice(0, block.lastIndexOf('\n\n')), block.slice(block.lastIndexOf('\n\n') + 2)] : [block, ''];
+      const a = await askJson(model, CHECK, `SOURCE (${pageUrl}):\n${await pageFacts(pageUrl)}\n\nREPLY:\n${reply}`, ENV);
+      const rows = a.claims ?? [];
+      const bad = rows.filter((r) => /WRONG|UNSUPPORTED/i.test(r.verdict));
+      let text = reply;
+      if (bad.length && String(a.fixed_reply ?? '').trim()) text = a.fixed_reply.trim();
+      writeFileSync(join(dir, `${id}.md`), verificationMd(id, rows, `against the linked page, ${pageUrl}, by ${model.provider}:${model.name ?? ''}. ${bad.length ? `${bad.length} fixed or cut in the reply.` : 'Nothing to fix.'}`));
+      if (text !== reply) writeFileSync(join(WS, 'queue', it.file), readFileSync(join(WS, 'queue', it.file), 'utf8').replace(block, disclosure ? `${text}\n\n${disclosure}` : text));
+      setMeta(WS, it.file, { status: 'checked', checked: today() });
+      console.log(`check: ${it.file}: ${rows.length} claim(s), ${bad.length} fixed or cut`);
+    } catch (e) { console.warn(`${it.file}: ${e.message}`); }
+  }
+}
+
 if (cmd === 'poll' || cmd === 'run') await poll();
 if (cmd === 'draft' || cmd === 'run') await draft();
 if (cmd === 'offer' || cmd === 'run') offer();
+if (cmd === 'check' || cmd === 'run') await check();

@@ -8,7 +8,7 @@ description: Forum listening. Find people on public forums (Reddit first) asking
 Help first, link second. A reply has to be worth reading if nobody clicks. The owner posts every
 reply from their own account; nothing here logs in, posts, votes or messages anyone.
 
-Tools (Node 22, in this plugin's `tools/`): `listen.mjs poll|draft|offer|run <workspace>`, with
+Tools (Node 22, in this plugin's `tools/`): `listen.mjs poll|draft|offer|check|run <workspace>`, with
 the guardrails in `listen-lib.mjs` (tested: `node --test tools/listen-lib.test.mjs`).
 
 ## Set up (once per brand)
@@ -51,10 +51,16 @@ the guardrails in `listen-lib.mjs` (tested: `node --test tools/listen-lib.test.m
      asked, two short lines), `city`, `country`, `nights`, `interests`, `reply`, `link_in_thread`,
      `drafted_by: "agent"`, and `status: "drafted"`, or `status: "skipped"` with a `reason`.
 3. Queue items with `kind: reply` and `status: changes` carry the owner's note: redraft the reply
-   in the card's text block (keep the disclosure line as it is) and set `status: ready`.
+   in the card's text block (keep the disclosure line as it is) and set `status: draft`, so the
+   fact gate sees it again.
 4. `node tools/listen.mjs offer <workspace>`: the guardrails decide which drafts go on the board
-   and which carry the disclosed link. Then sync the board.
-5. Tell the owner how many cards are waiting, and the top rows of `demand.csv` if any are new.
+   and which carry the disclosed link. Cards start as `draft`.
+5. **Fact gate.** Run the `fact-gate` skill on the new reply cards (`kind: reply`, `status: draft`):
+   a fresh-context verifier checks every claim against the linked page and, where it can, the
+   place's own site; the table goes to `campaigns/listening/verification/<card id>.md`; WRONG is
+   fixed, UNSUPPORTED is cut (never touch the disclosure line); then `status: checked`. Only
+   checked cards are ready to post. Then sync the board.
+6. Tell the owner how many cards are waiting, and the top rows of `demand.csv` if any are new.
 
 ## The reply
 
