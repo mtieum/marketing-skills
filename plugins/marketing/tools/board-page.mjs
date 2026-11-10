@@ -141,6 +141,7 @@ export function page(all, opts = {}) {
 .tabs{display:flex;flex-wrap:wrap;gap:4px;max-width:1100px;margin:10px auto 0;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 .tab{border:0;border-bottom:3px solid transparent;border-radius:6px 6px 0 0;background:none;padding:6px 10px 7px;white-space:nowrap;color:var(--muted)}
 .tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent);background:var(--tab)}
+.sections{display:flex;gap:6px;max-width:1100px;margin:10px auto 0}.sec{border:1px solid var(--line);border-radius:999px;background:none;padding:4px 12px;color:var(--muted)}.sec[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tab .c{display:inline-block;min-width:20px;margin-left:6px;padding:0 6px;border-radius:99px;background:var(--line);color:var(--ink);font-size:12px}
 .tab.overdue .c{background:var(--bad);color:var(--bg)}.tab .c.zero{opacity:.45}
 main{max-width:1100px;margin:0 auto;padding:8px 16px 80px}
@@ -174,6 +175,7 @@ button:hover,.btn:hover{border-color:var(--accent)}.share{font-weight:600}button
     <a class="btn" href="/reminders.ics" title="Every post still to do, with a 15-minute alarm: open it to add to your calendar">Add to calendar</a>
     <button id="reload" class="ghost">Reload</button></div>
   <div class="next hide" id="next"></div>
+  <nav class="sections hide" id="sections"></nav>
   <nav class="tabs" id="tabs" role="tablist"></nav>
 </div>
 <main id="main">${cards}<p class="empty hide" id="empty">Nothing here.</p></main>
@@ -197,7 +199,19 @@ function dayName(d){const t=ymd(new Date()),tm=ymd(new Date(Date.now()+864e5));i
   return new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
 
 let current=null;
+// Two sections: posts on the schedule (shorts, pins…) and forum replies, each with its own day tabs.
+const isReply=(c)=>c.dataset.kind==='reply';
+let section=store.get('board-section','posts');
+const pool=()=>cards.filter(c=>isReply(c)===(section==='replies'));
+function sections(){
+  const nav=document.getElementById('sections');const replies=cards.filter(isReply);
+  if(!replies.length){section='posts';nav.classList.add('hide');return}
+  const n=(list)=>list.filter(c=>!isDone(c)).length;
+  nav.classList.remove('hide');
+  nav.innerHTML=[['posts','Posts',n(cards.filter(c=>!isReply(c)))],['replies','Forum replies',n(replies)]].map(([k,l,c])=>'<button class="sec" data-section="'+k+'" aria-pressed="'+(k===section)+'">'+l+' · '+c+'</button>').join('');
+}
 function tabsFor(){
+  const cards=pool();
   const today=ymd(new Date());const todo=cards.filter(c=>!isDone(c));
   const tabs=[];
   const late=todo.filter(c=>c.dataset.due&&c.dataset.due<today);
@@ -211,6 +225,7 @@ function tabsFor(){
   return tabs;
 }
 function render(){
+  sections();
   const tabs=tabsFor();
   if(!current||!tabs.some(t=>t.key===current)){
     // Open on what needs doing first: anything overdue, else today if it has work, else the next day that does.
@@ -220,7 +235,7 @@ function render(){
   nav.innerHTML=tabs.map(t=>'<button class="tab '+(t.cls||'')+'" role="tab" aria-selected="'+(t.key===current)+'" data-tab="'+t.key+'">'+t.label+'<span class="c'+(t.n?'':' zero')+'">'+t.n+'</span></button>').join('');
   const tab=tabs.find(t=>t.key===current);
   // Within a tab: what's still to do first, in time order; done items after.
-  const shown=cards.filter(tab.show).sort((a,b)=>(isDone(a)-isDone(b))||((when(a)??0)-(when(b)??0)));
+  const shown=pool().filter(tab.show).sort((a,b)=>(isDone(a)-isDone(b))||((when(a)??0)-(when(b)??0)));
   const main=document.getElementById('main');
   cards.forEach(c=>c.classList.add('hide'));
   for(const c of shown){c.classList.remove('hide');c.classList.toggle('isdone',isDone(c));main.insertBefore(c,document.getElementById('empty'))}
@@ -256,7 +271,7 @@ function label(){
   bar.innerHTML='<b>Next up:</b> '+next.dataset.title+' · '+dayName(next.dataset.due)+' '+(next.dataset.time||'')+' <span class="in">('+(d<0?'due '+ago(d)+' ago':'in '+ago(d))+(needsYes(next)?', needs your approval first':'')+')</span>';
 }
 document.getElementById('next').addEventListener('click',(e)=>{const id=e.currentTarget.dataset.go;const c=document.getElementById(id);if(!c)return;
-  if(c.classList.contains('hide')){current=c.dataset.due||'all';render()}c.scrollIntoView({behavior:'smooth',block:'start'})});
+  if(c.classList.contains('hide')){section='posts';current=c.dataset.due||'all';render()}c.scrollIntoView({behavior:'smooth',block:'start'})});
 
 // Reminders while the page is open (the calendar file covers the rest).
 function remind(){
@@ -303,6 +318,7 @@ document.addEventListener('click',async(e)=>{
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.share)return share(b);
   if(b.dataset.tab){current=b.dataset.tab;render();window.scrollTo(0,0);return}
+  if(b.dataset.section){section=b.dataset.section;store.set('board-section',section);current=null;render();window.scrollTo(0,0);return}
   if(b.id==='reload')return location.reload();
   if(b.dataset.copy!==undefined)return copy(b.dataset.copy);
   if(b.dataset.open){copy(b.closest('.card').querySelector('.block pre').textContent);window.open(b.dataset.open,'_blank','noopener');return}
@@ -317,7 +333,7 @@ document.addEventListener('click',async(e)=>{
   if(!r.ok)return toast('Not saved: '+(await r.text()));
   const s=card.querySelector('.status');s.textContent=act;s.className='status s-'+act;card.dataset.status=act;toast('Saved: '+act);render();
 });
-if(location.hash){const c=document.getElementById(location.hash.slice(1));if(c){current=c.dataset.due||'all'}}
+if(location.hash){const c=document.getElementById(location.hash.slice(1));if(c){section=isReply(c)?'replies':'posts';current=c.dataset.due||'all'}}
 render();
 if(location.hash)document.getElementById(location.hash.slice(1))?.scrollIntoView();
 </script></body></html>`;
