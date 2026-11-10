@@ -70,7 +70,7 @@ reconnect in the gateway before posts to it can go).
       "cover_url": "https://board.example/media/a/41be…jpg?exp=1763060400&sig=…" }
   ],
   "text": {
-    "caption": "Two nights in Cologne…",
+    "caption": "A weekend in Cologne…",
     "title": "Cologne Christmas Markets: a 2-Day Cologne Itinerary",
     "description": "…",
     "link": "https://example.com/cologne/?utm_source=pinterest",

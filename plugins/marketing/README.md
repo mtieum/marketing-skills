@@ -36,6 +36,7 @@ that brand's **workspace**, a `marketing/` folder in the brand's own project.
 | `content` | Posts for a channel from a source page or story. Channel playbooks in `skills/content/channels/`. |
 | `data-story` | Finds a story in the brand's own data and turns it into a page and a press pitch. |
 | `outreach` | Finds the right people (press, bloggers, partners), writes personal pitches, tracks replies. |
+| `listen` | Watches forums (Reddit RSS) for questions your pages answer, drafts a helpful reply from your own facts, and puts it on the board to post by hand, within hard limits (`tools/listen.mjs`; model: local LLM, OpenAI, Anthropic, or an agent running the skill). |
 | `paid-test` | A small capped ad test: hypothesis, audience, copy variants, budget, stop rules, setup sheet. |
 | `fact-gate` | A separate agent checks every factual claim against a source. Nothing ships unchecked. |
 | `review` | Gathers everything waiting into one review file and applies your decisions. Or review in the browser: `node tools/board.mjs marketing` shows the queue in tabs by day (opening on what is due next), with each video, Copy buttons, Approve / Change / Reject / Posted written back into the queue, and reminders (calendar file and browser notifications) 15 minutes before each post. On the phone too: `board-cloud/` hosts it on your own Cloudflare (installable, push reminders, Share to app); see its README. |
@@ -62,6 +63,8 @@ marketing/
   campaigns/<slug>/brief.md
   queue/<id>.md     one file per item (post, pitch, ad, page), with a status
   outreach.csv      people contacted, when, reply, outcome
+  listen.json       forum listening: feeds, sources (links allowed?), model, disclosure line
+  listen/           its working files; demand.csv lists what people ask that you can't answer yet
   review/<date>.md  the weekly review sheets
   metrics/<date>.md the weekly reports
   publish/<date>/   posting packs ready to copy

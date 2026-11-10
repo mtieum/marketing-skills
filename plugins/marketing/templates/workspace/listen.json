@@ -1,0 +1,30 @@
+{
+  "about": "One line on what the brand is and who makes it.",
+  "domain": "example.com",
+  "user_agent": "linux:brand-listen:0.1 (by example.com)",
+  "model": {
+    "provider": "agent"
+  },
+  "pages": "listen/pages.json",
+  "feeds": [
+    {
+      "name": "reddit",
+      "platform": "reddit",
+      "comments_feed": true,
+      "url": "https://www.reddit.com/r/solotravel+travel/new/.rss?limit=100"
+    }
+  ],
+  "sources": {
+    "r/solotravel": {
+      "links_allowed": false
+    },
+    "r/travel": {
+      "links_allowed": false
+    }
+  },
+  "disclosure": {
+    "itinerary": "I made a free planner with a day-by-day {city} plan, if it's useful: {url} (my own project)",
+    "city": "I made a free trip planner with a page on {city}, if it helps: {url} (my own project)"
+  },
+  "limits": {}
+}

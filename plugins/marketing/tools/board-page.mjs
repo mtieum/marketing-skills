@@ -67,6 +67,7 @@ export function copyBlocks(text) {
 
 function card(item, n, opts) {
   const { meta } = item;
+  const reply = meta.kind === 'reply'; // a forum reply: posted by hand in the thread, no approval step
   const assets = [].concat(meta.assets ?? []);
   const media = assets.map((p) => {
     const e = extname(p).toLowerCase();
@@ -86,7 +87,7 @@ function card(item, n, opts) {
       <pre>${esc(b.body)}</pre>
     </div>`).join('');
   return `
-  <article class="card" id="${esc(meta.id ?? item.file.replace(/\.md$/, ''))}" data-status="${esc(meta.status ?? 'draft')}" data-channel="${esc(meta.channel)}" data-file="${esc(item.file)}" data-due="${esc(meta.due ?? '')}" data-time="${esc(meta.time ?? '')}" data-title="${esc(title(item))}" data-auto="${esc(meta.auto ?? '')}" data-gateway="${esc(meta.gateway ?? '')}" data-gateway-error="${esc(meta.gateway_error ?? '')}">
+  <article class="card" id="${esc(meta.id ?? item.file.replace(/\.md$/, ''))}" data-status="${esc(meta.status ?? 'draft')}" data-channel="${esc(meta.channel)}" data-file="${esc(item.file)}" data-due="${esc(meta.due ?? '')}" data-time="${esc(meta.time ?? '')}" data-title="${esc(title(item))}" data-auto="${esc(meta.auto ?? '')}" data-gateway="${esc(meta.gateway ?? '')}" data-gateway-error="${esc(meta.gateway_error ?? '')}" data-kind="${esc(meta.kind ?? '')}">
     <header>
       <span class="n">${n}</span>
       <span class="todo"></span>
@@ -100,17 +101,19 @@ function card(item, n, opts) {
       ${media ? `<div class="media">${media}</div>` : ''}
       <div class="words">
         ${blocks}
-        ${meta.link ? `<p class="row"><b>Link</b> <a href="${esc(meta.link)}" target="_blank" rel="noopener">${esc(meta.link)}</a> <button class="ghost" data-copy="${esc(meta.link)}">Copy</button></p>` : ''}
+        ${reply ? `<p class="row"><b>Thread</b> <a href="${esc(meta.thread)}" target="_blank" rel="noopener">${esc(meta.thread_title || meta.thread)}</a> <button class="yes" data-open="${esc(meta.thread)}">Copy reply &amp; open thread</button></p>` : ''}
+        ${meta.link ? `<p class="row"><b>${reply && meta.linked !== 'yes' ? 'Our page</b> <span class="when">(not in the reply: no link here)</span>' : 'Link</b>'} <a href="${esc(meta.link)}" target="_blank" rel="noopener">${esc(meta.link)}</a> <button class="ghost" data-copy="${esc(meta.link)}">Copy</button></p>` : ''}
         ${meta.notes ? `<p class="row notes"><b>Notes</b> ${esc(meta.notes)}</p>` : ''}
         ${meta.owner_note ? `<p class="row notes"><b>Your note</b> ${esc(meta.owner_note)}</p>` : ''}
         ${meta.out_url ? `<p class="row"><b>Posted</b> <a href="${esc(meta.out_url)}" target="_blank" rel="noopener">${esc(meta.out_url)}</a></p>` : ''}
         ${files ? `<details><summary>Files</summary><ul class="files">${files}</ul></details>` : ''}
         ${v ? `<details><summary>Fact check</summary><div class="check">${mdLite(v)}</div></details>` : ''}
         <div class="actions">
-          <button data-act="approved" class="yes" data-label="Approve" data-on="Approved ✓">Approve</button>
+          ${reply ? '' : `<button data-act="approved" class="yes" data-label="Approve" data-on="Approved ✓">Approve</button>`}
           <button data-act="changes" data-label="Change…" data-on="Changes asked">Change…</button>
           <button data-act="rejected" class="no" data-label="Reject" data-on="Rejected">Reject</button>
           <button data-act="out" data-label="Posted…" data-on="Posted ✓">Posted…</button>
+          ${reply ? '<button data-act="rejected" data-note="mute source" data-label="Mute source" data-on="Muted">Mute source</button>' : ''}
         </div>
       </div>
     </div>
@@ -236,6 +239,7 @@ function label(){
   cards.forEach(buttons);
   for(const c of cards){const t=c.querySelector('.todo');const w=when(c);
     if(isDone(c)||!w){t.textContent='';continue}
+    if(c.dataset.kind==='reply'){t.textContent='Reply in the thread, then tap Posted';t.classList.remove('late');continue}
     const d=w-now;const g=c.dataset.gateway;
     // Handed to a gateway: it posts by itself; a failure goes back to a person.
     if(g==='scheduled'||g==='publishing'){t.textContent=g==='publishing'?'Posting now…':'Auto-posts in '+ago(d);t.classList.remove('late');continue}
@@ -244,7 +248,7 @@ function label(){
     if(c.dataset.auto&&!needsYes(c)&&d>0){t.textContent='Auto-posts in '+ago(d);t.classList.remove('late');continue}
     const verb=needsYes(c)?(c.dataset.auto?'Approve to auto-post':'Approve, then post'):'Post';
     t.textContent=d<0?verb+' (due '+ago(d)+' ago)':verb+' in '+ago(d);t.classList.toggle('late',d<0)}
-  const next=cards.filter(c=>!isDone(c)&&when(c)&&!['scheduled','publishing'].includes(c.dataset.gateway)).sort((a,b)=>when(a)-when(b))[0];
+  const next=cards.filter(c=>!isDone(c)&&when(c)&&!['scheduled','publishing'].includes(c.dataset.gateway)&&c.dataset.kind!=='reply').sort((a,b)=>when(a)-when(b))[0];
   const bar=document.getElementById('next');
   if(!next){bar.classList.add('hide');return}
   const d=when(next)-now;
@@ -301,11 +305,13 @@ document.addEventListener('click',async(e)=>{
   if(b.dataset.tab){current=b.dataset.tab;render();window.scrollTo(0,0);return}
   if(b.id==='reload')return location.reload();
   if(b.dataset.copy!==undefined)return copy(b.dataset.copy);
+  if(b.dataset.open){copy(b.closest('.card').querySelector('.block pre').textContent);window.open(b.dataset.open,'_blank','noopener');return}
   if(b.hasAttribute('data-copyblock'))return copy(b.closest('.block').querySelector('pre').textContent);
   const act=b.dataset.act;if(!act)return;
   const card=b.closest('.card');const body={file:card.dataset.file,status:act};
   if(act==='changes'){const n=prompt('What should change?');if(!n)return;body.note=n}
-  if(act==='rejected'){const n=prompt('Why? (optional, helps next time)');if(n===null)return;if(n)body.note=n}
+  if(act==='rejected'&&b.dataset.note)body.note=b.dataset.note;
+  else if(act==='rejected'){const n=prompt('Why? (optional, helps next time)');if(n===null)return;if(n)body.note=n}
   if(act==='out'){const n=prompt('Link to the live post (optional)');if(n===null)return;if(n)body.out_url=n}
   const r=await fetch('/decide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok)return toast('Not saved: '+(await r.text()));
@@ -322,7 +328,7 @@ export function calendar(all, baseUrl) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
   const fold = (line) => line.match(/.{1,73}/g).join('\r\n ');
   const txt = (s) => String(s).replace(/[\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
-  const events = all.filter((it) => it.meta.due && !DONE.has(it.meta.status ?? 'draft')).map((it) => {
+  const events = all.filter((it) => it.meta.due && it.meta.kind !== 'reply' && !DONE.has(it.meta.status ?? 'draft')).map((it) => {
     const [h, m] = (it.meta.time || '09:00').split(':');
     const start = `${it.meta.due.replace(/-/g, '')}T${h.padStart(2, '0')}${(m ?? '00').padStart(2, '0')}00`;
     const id = it.meta.id ?? it.file.replace(/\.md$/, '');

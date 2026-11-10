@@ -166,7 +166,7 @@ async function nextUp(env) {
   const q = await loadQueue(env);
   const now = Date.now();
   await gatewayStates(env, q);
-  const due = q.items.filter((i) => todo(i) && !auto(i) && dueAt(i, env) !== null && now >= dueAt(i, env) - (LEAD_MIN + 5) * 60000 && now < dueAt(i, env) + 3600000)
+  const due = q.items.filter((i) => todo(i) && !auto(i) && i.meta.kind !== 'reply' && dueAt(i, env) !== null && now >= dueAt(i, env) - (LEAD_MIN + 5) * 60000 && now < dueAt(i, env) + 3600000)
     .sort((a, b) => dueAt(a, env) - dueAt(b, env));
   if (!due.length) return { title: 'Review board', body: 'Nothing due right now.', url: '/' };
   const it = due[0];
