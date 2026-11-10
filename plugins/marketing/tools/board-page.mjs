@@ -254,7 +254,10 @@ function label(){
   cards.forEach(buttons);
   for(const c of cards){const t=c.querySelector('.todo');const w=when(c);
     if(isDone(c)||!w){t.textContent='';continue}
-    if(c.dataset.kind==='reply'){const st=c.dataset.status;t.textContent=st==='draft'?'Being fact-checked':st==='changes'?'Being redrafted':'Reply in the thread, then tap Posted';t.classList.remove('late');continue}
+    if(c.dataset.kind==='reply'){const st=c.dataset.status;const wait=st==='draft'||st==='changes';
+      // Not checked yet: nothing to copy, so an unchecked reply can't be posted by mistake.
+      c.querySelectorAll('[data-open],[data-copyblock]').forEach(x=>x.classList.toggle('hide',wait));
+      t.textContent=st==='draft'?'Being fact-checked: copy it once it is checked':st==='changes'?'Being redrafted':'Reply in the thread, then tap Posted';t.classList.remove('late');continue}
     const d=w-now;const g=c.dataset.gateway;
     // Handed to a gateway: it posts by itself; a failure goes back to a person.
     if(g==='scheduled'||g==='publishing'){t.textContent=g==='publishing'?'Posting now…':'Auto-posts in '+ago(d);t.classList.remove('late');continue}
