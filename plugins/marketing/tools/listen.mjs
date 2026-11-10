@@ -6,7 +6,9 @@
 //   node listen.mjs draft <workspace>   score and draft them with the chosen model (or leave them for an agent)
 //   node listen.mjs offer <workspace>   put the best drafts on the board as reply cards, within the limits
 //   node listen.mjs check <workspace>   fact-check new reply cards against the page (a separate model call), fix or cut
-//   node listen.mjs run   <workspace>   all four (for a timer)
+//   node listen.mjs track <workspace>   posted replies at 24 h and 7 days: still there? replies? your edits kept as examples
+//   node listen.mjs report <workspace>  the week in numbers, to metrics/listening-<date>.md
+//   node listen.mjs run   <workspace>   poll, draft, offer, check and track (for a timer)
 //
 // Config: <workspace>/listen.json (see templates/workspace/listen.json): feeds to read, sources
 // (where posts come from: links_allowed each, set by hand after reading that place's rules). State: <workspace>/listen/
@@ -18,8 +20,8 @@ import { askJson, usesAgent } from './llm.mjs';
 import { items as queueItems, setMeta } from './queue-lib.mjs';
 
 const [cmd, wsArg] = process.argv.slice(2);
-if (!['poll', 'draft', 'offer', 'check', 'run'].includes(cmd) || !wsArg) {
-  console.error('usage: listen.mjs poll|draft|offer|check|run <workspace>');
+if (!['poll', 'draft', 'offer', 'check', 'track', 'report', 'run'].includes(cmd) || !wsArg) {
+  console.error('usage: listen.mjs poll|draft|offer|check|track|report|run <workspace>');
   process.exit(2);
 }
 const WS = wsArg;
@@ -128,6 +130,13 @@ const SHAPE = `Answer with JSON only:
  "interests": [str], "constraints": [str], "already_answered_well": bool, "sensitive": bool, "fit_score": int,
  "summary": "what they asked, in at most two short lines", "reply": "the reply text, or empty if fit_score < 7"}`;
 
+/** The owner's own versions of past replies (what they actually posted): the drafts move toward their voice. */
+function examples(n = 10) {
+  const f = join(DIR, 'examples.jsonl');
+  if (!existsSync(f)) return [];
+  return readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).slice(-n);
+}
+
 function recentOpenings() {
   return queueItems(WS).filter((i) => i.meta.kind === 'reply').slice(-20).map((i) => i.text.replace(/^[\s\S]*?```[^\n]*\n/, '').split(/[.!?\n]/)[0].slice(0, 80));
 }
@@ -140,6 +149,7 @@ async function draftOne(c, model) {
     said.length ? `COMMENTS SO FAR:\n${said.map((s) => `- ${s.author}: ${s.text}`).join('\n')}` : 'COMMENTS SO FAR: none',
     `FACTS (the page the link would go to, ${c.page.url}):\n${facts}`,
     `RECENT OPENINGS:\n${recentOpenings().map((o) => `- ${o}`).join('\n') || '- none'}`,
+    ...(examples().length ? [`HOW THE OWNER EDITS (our draft, then what they posted; write the way they post):\n${examples().map((e) => `DRAFT: ${e.draft}\nPOSTED: ${e.posted}`).join('\n---\n')}`] : []),
     SHAPE,
   ].join('\n\n');
   const a = await askJson(model, RULES, user, ENV);
@@ -200,8 +210,8 @@ function offer() {
   const state = readJson(join(DIR, 'state.json'), { muted: {} });
   const replies = queueItems(WS).filter((i) => i.meta.kind === 'reply');
   // "Mute source" (a reject whose note says mute), or a removal noted the same way: quiet for a while.
-  for (const r of replies) if (r.meta.status === 'rejected' && /mute|removed|warn/i.test(r.meta.owner_note ?? '') && r.meta.source) {
-    const until = new Date(Date.parse(r.meta.decided ?? today()) + LIMITS.mute_days * 86400000).toISOString().slice(0, 10);
+  for (const r of replies) if (((r.meta.status === 'rejected' && /mute|removed|warn/i.test(r.meta.owner_note ?? '')) || r.meta.removed === 'yes') && r.meta.source) {
+    const until = new Date(Date.parse(r.meta.removed_at ?? r.meta.decided ?? today()) + LIMITS.mute_days * 86400000).toISOString().slice(0, 10);
     if (!state.muted[r.meta.source] || state.muted[r.meta.source] < until) state.muted[r.meta.source] = until;
   }
   // Cards nobody posted within two days: the thread has moved on.
@@ -269,7 +279,87 @@ async function check() {
   }
 }
 
+// After posting. Reddit's anonymous RSS shows whether a comment is still there, its replies and
+// its text; scores need the API (an app), so they aren't read here.
+const replyOf = (it) => (it.text.match(/```[^\n]*\n([\s\S]*?)\n```/)?.[1] ?? it.text).trim();
+const flat = (s) => String(s).replace(/\s+/g, ' ').trim();
+
+async function track() {
+  const posted = queueItems(WS).filter((i) => i.meta.kind === 'reply' && i.meta.status === 'out' && i.meta.out_url && i.meta.removed !== 'yes');
+  const due = (it, h, key) => !it.meta[key] && Date.now() - Date.parse(it.meta.out) >= h * 3600000;
+  for (const it of posted) {
+    const steps = [[24, 'replies_24h'], [168, 'replies_7d']].filter(([h, k]) => due(it, h, k));
+    const first = !it.meta.comment_url;
+    if (!first && !steps.length) continue;
+    try {
+      // A share link (/s/…) leads to the comment's address; keep that.
+      let url = it.meta.comment_url;
+      if (!url) {
+        const r = await fetch(it.meta.out_url, { redirect: 'manual', headers: { 'user-agent': UA } });
+        url = new URL(r.headers.get('location') ?? it.meta.out_url, it.meta.out_url);
+        url.search = '';
+        url = url.toString();
+        if (!/\/comment\/|\/comments\/[^/]+\/[^/]+\/[^/]+/.test(url)) throw new Error(`not a comment link: ${url}`);
+      }
+      const cid = url.match(/\/comment\/([a-z0-9]+)/i)?.[1] ?? url.replace(/\/$/, '').split('/').pop();
+      const entries = parseFeed(await get(`${url.replace(/\/?$/, '/')}.rss`));
+      const mine = entries.find((e) => e.id === `t1_${cid}`);
+      const changes = { comment_url: url };
+      const gone = !mine || /^\[(removed|deleted)\]$/.test(mine.body.trim());
+      if (gone) {
+        Object.assign(changes, { removed: 'yes', removed_at: today() });
+        console.log(`track: ${it.file}: the comment is gone (removed or deleted): ${it.meta.source} muted for ${LIMITS.mute_days} days`);
+      } else {
+        const replies = entries.filter((e) => e.id !== `t1_${cid}` && e.id.startsWith('t1_')).length;
+        for (const [, k] of steps) changes[k] = String(replies);
+        // What the owner actually posted, when they changed the draft: an example for next time.
+        if (first && flat(mine.body) !== flat(replyOf(it))) {
+          appendFileSync(join(DIR, 'examples.jsonl'), `${JSON.stringify({ at: today(), source: it.meta.source, card: it.file, draft: replyOf(it), posted: mine.body })}\n`);
+          changes.edited = 'yes';
+        }
+        console.log(`track: ${it.file}: there, ${replies} repl${replies === 1 ? 'y' : 'ies'}${changes.edited ? ', your edit kept as an example' : ''}`);
+      }
+      setMeta(WS, it.file, changes);
+    } catch (e) { console.warn(`track ${it.file}: ${e.message}`); }
+  }
+}
+
+/** The week in numbers: what was found, offered, posted, removed, and what people asked that the brand can't answer. */
+function report() {
+  const since = Date.now() - 7 * 86400000;
+  const cands = allCands().filter((c) => Date.parse(c.at) >= since);
+  const cards = queueItems(WS).filter((i) => i.meta.kind === 'reply' && Date.parse(i.meta.due) >= since);
+  const by = (list, f) => list.reduce((m, x) => ((m[f(x)] = (m[f(x)] ?? 0) + 1), m), {});
+  const posted = cards.filter((i) => i.meta.status === 'out');
+  const skipped = by(cands.filter((c) => c.status === 'skipped'), (c) => String(c.reason ?? '?').replace(/^fit \d+.*/, 'low fit'));
+  const demandRows = existsSync(join(DIR, 'demand.csv')) ? readFileSync(join(DIR, 'demand.csv'), 'utf8').trim().split('\n').slice(1)
+    .map((l) => l.match(/"((?:[^"]|"")*)"/g)?.map((v) => v.slice(1, -1)) ?? []).filter((r) => Date.parse(r[0]) >= since - 86400000) : [];
+  const top = Object.entries(by(demandRows, (r) => `${r[1]}${r[2] ? `, ${r[2]}` : ''} (${r[4]})`)).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const lines = [
+    `# Forum listening, week to ${today()}`, '',
+    '| | |', '|---|---|',
+    `| Posts kept by the prefilter | ${cands.length} |`,
+    `| Drafted | ${cands.filter((c) => c.reply).length} |`,
+    `| Cards offered | ${cards.length} |`,
+    `| Posted | ${posted.length} (${posted.filter((i) => i.meta.linked === 'yes').length} with a link) |`,
+    `| Skipped or rejected cards | ${cards.filter((i) => i.meta.status === 'rejected').length} |`,
+    `| Edited before posting | ${posted.filter((i) => i.meta.edited === 'yes').length} |`,
+    `| Replies received (at 7 days, or 24 h so far) | ${posted.reduce((n, i) => n + Number(i.meta.replies_7d ?? i.meta.replies_24h ?? 0), 0)} |`,
+    `| Removed | ${posted.filter((i) => i.meta.removed === 'yes').length} |`, '',
+    '## Posted', '', ...(posted.length ? posted.map((i) => `- ${i.meta.source}: [${i.meta.thread_title}](${i.meta.comment_url ?? i.meta.out_url})${i.meta.removed === 'yes' ? ' **removed**' : ''}${i.meta.edited === 'yes' ? ' (edited)' : ''}`) : ['- none']), '',
+    '## Why posts were skipped', '', ...(Object.keys(skipped).length ? Object.entries(skipped).sort((a, b) => b[1] - a[1]).map(([k, v]) => `- ${k}: ${v}`) : ['- none']), '',
+    '## Asked about, no page yet (next itineraries?)', '', ...(top.length ? top.map(([k, v]) => `- ${k}: ${v}`) : ['- none']), '',
+    'Visits from replies: filter the site analytics by utm_medium=reply.', '',
+  ];
+  mkdirSync(join(WS, 'metrics'), { recursive: true });
+  const f = join(WS, 'metrics', `listening-${today()}.md`);
+  writeFileSync(f, lines.join('\n'));
+  console.log(`report: ${f}`);
+}
+
 if (cmd === 'poll' || cmd === 'run') await poll();
 if (cmd === 'draft' || cmd === 'run') await draft();
 if (cmd === 'offer' || cmd === 'run') offer();
 if (cmd === 'check' || cmd === 'run') await check();
+if (cmd === 'track' || cmd === 'run') await track();
+if (cmd === 'report') report();

@@ -8,7 +8,7 @@ description: Forum listening. Find people on public forums (Reddit first) asking
 Help first, link second. A reply has to be worth reading if nobody clicks. The owner posts every
 reply from their own account; nothing here logs in, posts, votes or messages anyone.
 
-Tools (Node 22, in this plugin's `tools/`): `listen.mjs poll|draft|offer|check|run <workspace>`, with
+Tools (Node 22, in this plugin's `tools/`): `listen.mjs poll|draft|offer|check|track|report|run <workspace>`, with
 the guardrails in `listen-lib.mjs` (tested: `node --test tools/listen-lib.test.mjs`).
 
 ## Set up (once per brand)
@@ -29,7 +29,9 @@ the guardrails in `listen-lib.mjs` (tested: `node --test tools/listen-lib.test.m
    - `openai` / `anthropic`: by API, key in the environment or the workspace's git-ignored `.listen.env`.
 5. Git-ignore `listen/candidates/`, `listen/seen.json`, `listen/state.json`, `.listen.env`.
    Keep `listen/demand.csv`: it is the list of places people ask about that the brand can't answer yet.
-6. A timer can run `listen.mjs run <workspace>` every 30 minutes, then the board sync.
+6. A timer can run `listen.mjs run <workspace>` every 30 minutes (poll, draft, offer, check, track),
+   rebuild the page index daily and run `listen.mjs report` on Mondays. With `agent`, the timer
+   gathers and tracks; drafting and checking wait for the agent.
 
 ## Each pass (as the agent)
 
@@ -79,6 +81,20 @@ A reply card shows the thread, the reply and **Copy reply & open thread**. The o
 adjusts and posts it, then taps **Posted…** with the comment's link. **Change…** sends a note
 back for a redraft, **Reject** skips it, **Mute source** quiets that subreddit for 30 days (so
 does a reject noting a removal or a mod warning). Unposted cards expire after two days.
+
+## After posting
+
+`listen.mjs track` follows each posted reply (from its **Posted…** link) without an account:
+right away it resolves the comment's address and, if the owner changed the draft before posting,
+keeps both versions in `listen/examples.jsonl`; the last 10 go into every drafting prompt (an
+agent drafting should read them too, and write the way the owner posts). At 24 hours and 7 days
+it records the replies the comment got; a comment that is gone (removed or deleted) is marked
+`removed: yes` and mutes that source. Upvotes need the platform's API and aren't read.
+
+`listen.mjs report` writes the week to `metrics/listening-<date>.md`: found, drafted, offered,
+posted (with links), edited, replies, removals, why posts were skipped, and the places asked
+about with no page yet. The `report` skill can fold it in. Visits from replies come from the
+site's analytics, filtered on `utm_medium=reply`.
 
 ## Guardrails (enforced in `listen-lib.mjs`, `limits` in listen.json can tighten or loosen)
 
