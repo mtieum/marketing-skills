@@ -225,6 +225,20 @@ async function syncApi(req, env, url) {
     case 'PUT /api/sync/queue': {
       const q = await req.json();
       if (!Array.isArray(q.items)) return text('items missing', 400);
+      // Several machines may sync one workspace (a laptop with the media, an always-on box with
+      // only the text). A sync never drops what it can't see, and never un-posts an item:
+      // - an item whose media files aren't on the syncing machine keeps the files it had;
+      // - an item already out stays out, with its link, if this copy of the queue is older.
+      const prev = new Map(((await (await env.BUCKET.get('queue.json'))?.json())?.items ?? []).map((i) => [i.file, i]));
+      for (const i of q.items) {
+        const p = prev.get(i.file);
+        if (!p) continue;
+        const named = [].concat(i.meta?.assets ?? []);
+        for (const a of named) if (!i.assetKeys?.[a] && p.assetKeys?.[a]) (i.assetKeys ??= {})[a] = p.assetKeys[a];
+        if (p.meta?.status === 'out' && i.meta?.status !== 'out') {
+          for (const k of ['status', 'out', 'out_url', 'decided', 'owner_note']) if (p.meta[k] !== undefined) i.meta[k] = p.meta[k];
+        }
+      }
       await env.BUCKET.put('queue.json', JSON.stringify({ ...q, synced: new Date().toISOString() }), { httpMetadata: { contentType: 'application/json' } });
       // Files no item names any more are deleted, so the bucket holds only what's queued.
       const keep = new Set(q.items.flatMap((i) => Object.values(i.assetKeys ?? {})));
