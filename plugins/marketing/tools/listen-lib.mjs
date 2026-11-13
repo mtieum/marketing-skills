@@ -36,9 +36,24 @@ export function parseFeed(xml) {
 /** A trip's length in the words people use: "2 days", "three nights", "a weekend in", "itinerary". */
 export const DURATION = /\b(\d{1,2}|one|two|three|four|five|six|seven|ten|fourteen|a|couple of|few)\s*(-|\s)?(full\s)?(days?|nights?|weeks?)\b|\bweekend (in|trip|break)\b|\bcity break\b|\bitinerary\b|\bfirst time in\b|\bhow (many|long) (days|nights)\b/i;
 
+const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fourteen: 14, fifteen: 15, a: 1 };
+/** The longest trip length a post names, in days ("15 days" 15, "two weeks" 14, "10 nights" 10, "a month" 30), or 0. */
+export function tripDays(text) {
+  let days = 0;
+  for (const m of String(text).toLowerCase().matchAll(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fourteen|fifteen|a)[\s-]*(days?|nights?|weeks?|months?)\b/g)) {
+    const n = /^\d/.test(m[1]) ? Number(m[1]) : WORDS[m[1]];
+    days = Math.max(days, n * ({ d: 1, n: 1, w: 7, m: 30 }[m[2][0]]));
+  }
+  return days;
+}
+
+/** From how many days a post is a long trip, which a `route` page answers better than a city's. */
+export const ROUTE_DAYS = 7;
+
 /**
  * The page index: [{ name, aliases?, match?, country?, url, kind }] where kind is 'itinerary' (the best
- * answer) or 'city'. Returns a matcher: text → the best page it names, or null.
+ * answer for a short stay), 'city', or 'route' (a longer trip across a country, named by the country;
+ * the best answer once the post is a week or more). Returns a matcher: text → the best page it names, or null.
  */
 export function matcher(index) {
   const names = [];
@@ -52,8 +67,14 @@ export function matcher(index) {
     const t = ` ${norm(text)} `;
     const hits = names.filter((n) => n.re.test(t)).map((n) => n.p);
     if (!hits.length) return null;
+    // A week or more: the country's route, if it names one. Otherwise never a route.
+    const long = tripDays(text) >= ROUTE_DAYS;
+    const route = hits.find((p) => p.kind === 'route');
+    if (long && route) return route;
+    const rest = hits.filter((p) => p.kind !== 'route');
+    if (!rest.length) return null;
     // Same place named twice (an itinerary and its city page): the itinerary wins.
-    return hits.sort((a, b) => (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2))[0];
+    return rest.sort((a, b) => (rank[a.kind] ?? 2) - (rank[b.kind] ?? 2))[0];
   };
 }
 

@@ -155,10 +155,12 @@ async function draftOne(c, model) {
   const a = await askJson(model, RULES, user, ENV);
   const out = { ...c, ...a, fit: Number(a.fit_score ?? 0), link_in_thread: said.some((s) => cfg.domain && s.text.includes(cfg.domain)), drafted_at: new Date().toISOString(), drafted_by: `${model.provider}:${model.name ?? ''}` };
   // The model's place may not be the page the prefilter guessed; a place we have no page for is demand.
-  const named = a.city ? matcher(index())(`${a.city} ${a.country ?? ''}`) : null;
-  if (a.city && !named) { demand({ city: a.city, country: a.country, nights: a.nights, has: 'nothing', thread: c.url }); return { ...out, status: 'skipped', reason: 'no page for this place' }; }
+  // A long trip matched to a country route keeps it: the model's one city would narrow it back down.
+  const route = c.page.kind === 'route';
+  const named = !route && a.city ? matcher(index())(`${a.city} ${a.country ?? ''}`) : null;
+  if (!route && a.city && !named) { demand({ city: a.city, country: a.country, nights: a.nights, has: 'nothing', thread: c.url }); return { ...out, status: 'skipped', reason: 'no page for this place' }; }
   if (named) out.page = named;
-  if (out.page.kind !== 'itinerary') demand({ city: a.city ?? out.page.name, country: a.country, nights: a.nights, has: 'city page', thread: c.url });
+  if (out.page.kind === 'city') demand({ city: a.city ?? out.page.name, country: a.country, nights: a.nights, has: 'city page', thread: c.url });
   const bad = !a.is_trip_planning_question ? 'not a planning question' : a.sensitive ? 'sensitive' : a.already_answered_well ? 'already answered well' : out.fit < LIMITS.min_fit ? `fit ${out.fit}` : !String(a.reply ?? '').trim() ? 'no reply' : null;
   return { ...out, status: bad ? 'skipped' : 'drafted', reason: bad ?? undefined };
 }

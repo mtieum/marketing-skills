@@ -20,8 +20,10 @@ the guardrails in `listen-lib.mjs` (tested: `node --test tools/listen-lib.test.m
    and set `true` only where self-made links are plainly allowed; unsure means `false`.
    A reply without a link still helps and builds the account's history.
 3. **Pages**: the brand supplies `listen/pages.json`, `[{ name, aliases?, match?, country?, url, kind }]`
-   with `kind` `itinerary` (the best answer) or `city`, rebuilt as its site changes (a script of
-   the brand's, on a timer). Leave out names that are everyday words, or give them `match` words.
+   with `kind` `itinerary` (the best answer for a short stay), `city`, or `route` (a longer trip
+   across a country, named by the country: it answers posts of a week or more, `tripDays` in
+   listen-lib), rebuilt as its site changes (a script of the brand's, on a timer). Leave out names
+   that are everyday words, or give them `match` words. Give `disclosure` a line for each kind.
 4. **Model** (`listen.json` `model.provider`):
    - `agent` (default): the tools gather; an agent (Claude Code, Cowork, a scheduled task) runs this
      skill to score and draft. Frontier quality, no API key.

@@ -1,7 +1,7 @@
 // node --test plugins/marketing/tools/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_LIMITS, decide, matcher, norm, parseFeed, prefilter, tracked } from './listen-lib.mjs';
+import { DEFAULT_LIMITS, decide, matcher, norm, parseFeed, prefilter, tracked, tripDays } from './listen-lib.mjs';
 
 const index = [
   { name: 'Kraków', aliases: ['Cracow'], url: 'https://ex.test/krakow/two-nights/', kind: 'itinerary' },
@@ -28,6 +28,16 @@ test('prefilter needs a length and a place', () => {
   assert.ok(prefilter({ title: 'Weekend in York', body: '' }, match));
   assert.equal(prefilter({ title: 'Kraków or Prague?', body: 'no idea' }, match), null);
   assert.equal(prefilter({ title: '2 days in Lima', body: '' }, match), null);
+});
+
+test('a trip of a week or more goes to the country route, a short one to the city', () => {
+  const m = matcher([...index, { name: 'Thailand', url: 'https://ex.test/thailand/two-weeks/', kind: 'route' }, { name: 'Bangkok', url: 'https://ex.test/bangkok/two-nights/', kind: 'itinerary' }]);
+  assert.equal(tripDays('15 Days in thailand in Nov'), 15);
+  assert.equal(tripDays('two weeks, then 3 nights in Bangkok'), 14);
+  assert.equal(tripDays('a weekend'), 0);
+  assert.equal(m('15 Days in Thailand: 2 nights Bangkok then Chiang Mai').kind, 'route');
+  assert.equal(m('2 days in Bangkok, Thailand').kind, 'itinerary');
+  assert.equal(m('3 days in Thailand, where?'), null); // a short trip names no city: nothing fits
 });
 
 test('feeds: Atom entries', () => {
