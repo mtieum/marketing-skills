@@ -5,13 +5,14 @@
 //
 // 1. Takes the decisions made on the hosted board (approve, change, reject, posted) and writes
 //    them into the item files, exactly as the local board does.
+//    Auto-posting switched on the board goes into publish.json too.
 // 2. Uploads the queue (text, front matter, fact checks) and any files not uploaded yet
 //    (videos go up in parts; unchanged files are skipped). Files no item names any more are
 //    deleted from the bucket.
 // Reads BOARD_URL and BOARD_SYNC_TOKEN from <workspace>/.board.env (written by board-cloud/setup.mjs)
 // or the environment. Safe to run as often as you like.
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { decisionChanges, items, setMeta, verification } from './queue-lib.mjs';
 
@@ -74,9 +75,21 @@ for (const it of all) {
 // Which channels post through a gateway (publish.json), and where the board lives (for its signed links).
 const publishFile = join(ws, 'publish.json');
 const publish = existsSync(publishFile) ? JSON.parse(readFileSync(publishFile, 'utf8')) : null;
+// Auto-posting turned on or off on the board, written into publish.json (then cleared there).
+const switched = publish ? await (await api('GET', '/api/sync/auto')).json() : {};
+const autoDone = {};
+for (const [name, { auto, at }] of Object.entries(switched ?? {})) {
+  const ch = publish.channels?.[name];
+  if (!ch) continue;
+  if (ch.auto !== auto) console.log(`auto      ${name} ${auto ? 'on' : 'off'}`);
+  ch.auto = auto;
+  autoDone[name] = at;
+}
+if (Object.keys(autoDone).length) writeFileSync(publishFile, `${JSON.stringify(publish, null, 2)}\n`);
 const payload = { origin: URL_, publish, items: all.map(({ file, meta, text, assetKeys }) => ({ file, meta, text, assetKeys, verification: verification(ws, { meta, file }) })) };
 const res = await (await api('PUT', '/api/sync/queue', JSON.stringify(payload), { 'content-type': 'application/json' })).json();
 if (applied.length) await api('POST', '/api/sync/ack', JSON.stringify({ done: applied }), { 'content-type': 'application/json' });
+if (Object.keys(autoDone).length) await api('POST', '/api/sync/auto-ack', JSON.stringify({ done: autoDone }), { 'content-type': 'application/json' });
 console.log(`synced ${res.items} items to ${URL_}: ${applied.length} decision(s) in, ${uploaded} file(s) uploaded, ${res.removed} old file(s) removed`);
 
 if (args.includes('--test-push')) {

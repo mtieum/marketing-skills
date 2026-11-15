@@ -62,10 +62,10 @@ const server = createServer((req, res) => {
       req.on('data', (c) => (body += c));
       req.on('end', () => {
         try {
-          const { file, status, note, out_url } = JSON.parse(body);
+          const { file, status, note, out_url, relink, unpost } = JSON.parse(body);
           if (!ALLOWED_STATUS.has(status)) throw new Error('unknown status');
           if (!items().some((i) => i.file === file)) throw new Error('unknown item');
-          setMeta(WS, file, decisionChanges({ status, note, out_url }));
+          setMeta(WS, file, decisionChanges({ status, note, out_url, relink, unpost }));
           res.writeHead(200).end('ok');
         } catch (e) {
           res.writeHead(400).end(e.message);

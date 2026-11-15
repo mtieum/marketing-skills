@@ -119,6 +119,10 @@ export async function syncGateway(env, origin, q, { zonedDue, notify }) {
         const r = await call(env, cfg, 'DELETE', `/v0/posts/${encodeURIComponent(id)}`);
         if (r.ok || r.status === 404) await env.BUCKET.delete(`sent/${id}.json`);
         else if (r.data?.post) await record(env, id, item.file, sent, r.data.post, notify);
+      } else if (sent && sent.status === 'canceled') {
+        // Canceled at the gateway while not wanted here (auto off for the channel): forgotten,
+        // so turning auto back on sends it afresh rather than leaving it canceled for good.
+        await env.BUCKET.delete(`sent/${id}.json`);
       }
       continue;
     }

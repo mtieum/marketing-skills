@@ -113,6 +113,8 @@ function card(item, n, opts) {
           <button data-act="changes" data-label="Change…" data-on="Changes asked">Change…</button>
           <button data-act="rejected" class="no" data-label="Reject" data-on="Rejected">Reject</button>
           <button data-act="out" data-label="Posted…" data-on="Posted ✓">Posted…</button>
+          <button data-act="relink" class="ghost" data-label="Edit link…" data-link="${esc(meta.out_url ?? '')}">Edit link…</button>
+          <button data-act="unpost" class="ghost" data-label="Not posted">Not posted</button>
           ${reply ? '<button data-act="rejected" data-note="mute source" data-label="Mute source" data-on="Muted">Mute source</button>' : ''}
         </div>
       </div>
@@ -166,11 +168,13 @@ details{margin:8px 0;font-size:14px}summary{cursor:pointer;color:var(--muted)}.f
 button,.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;padding:4px 10px;cursor:pointer;text-decoration:none}
 button:hover,.btn:hover{border-color:var(--accent)}.share{font-weight:600}button.ghost{padding:1px 7px;font-size:12px}
 .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.actions button[aria-pressed=true]{cursor:default;opacity:1;background:color-mix(in srgb,currentColor 16%,transparent);font-weight:600}.yes{color:var(--good);border-color:currentColor}.no{color:var(--bad)}
+.autos{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}.auto{text-transform:capitalize;color:var(--muted)}.auto.on{color:var(--good);border-color:currentColor;font-weight:600}
 .hide{display:none}.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:6px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.on{opacity:1}
 @media (max-width:600px){.tabs{flex-wrap:nowrap;overflow-x:auto}.media{flex-basis:100%}.media video,.media img{width:100%}.id{margin-left:0}}
 </style></head><body>
 <div class="top">
   <div class="bar"><h1>Review board</h1><span class="spacer"></span>
+    ${(opts.channels ?? []).length ? `<span class="autos" title="Auto-posting through the gateway, per channel: off keeps that channel on reminders">Auto-post ${opts.channels.map((c) => `<button class="auto${c.auto ? ' on' : ''}" data-auto="${esc(c.name)}" aria-pressed="${c.auto}">${esc(c.name)} ${c.auto ? 'on' : 'off'}</button>`).join(' ')}</span>` : ''}
     <button id="notify" title="Browser notifications 15 minutes before each post, while this page is open">Notify me</button>
     <a class="btn" href="/reminders.ics" title="Every post still to do, with a 15-minute alarm: open it to add to your calendar">Add to calendar</a>
     <button id="reload" class="ghost">Reload</button></div>
@@ -243,12 +247,12 @@ function render(){
   label();
 }
 /** Each card's to-do line, and the "next up" bar. */
-/** The buttons follow the status: the current one is shown pressed and can't be clicked again; posted items keep only Posted (a rejected one can still be approved). */
+/** The buttons follow the status: the current one is shown pressed and can't be clicked again; posted items keep Posted, plus Edit link and Not posted to correct a mistake (a rejected one can still be approved). */
 const SAME={ready:'approved',measured:'out'};
 function buttons(c){const st=SAME[c.dataset.status]||c.dataset.status;const done=st==='out';
-  for(const b of c.querySelectorAll('.actions [data-act]')){const on=b.dataset.act===st;
+  for(const b of c.querySelectorAll('.actions [data-act]')){const a=b.dataset.act;const fix=a==='relink'||a==='unpost';const on=a===st;
     b.setAttribute('aria-pressed',on);b.disabled=on;b.textContent=on?b.dataset.on:b.dataset.label;
-    b.classList.toggle('hide',done&&b.dataset.act!=='out')}}
+    b.classList.toggle('hide',fix?!done:done&&a!=='out')}}
 function label(){
   const now=Date.now();
   cards.forEach(buttons);
@@ -323,11 +327,26 @@ document.addEventListener('click',async(e)=>{
   if(b.dataset.tab){current=b.dataset.tab;render();window.scrollTo(0,0);return}
   if(b.dataset.section){section=b.dataset.section;store.set('board-section',section);current=null;render();window.scrollTo(0,0);return}
   if(b.id==='reload')return location.reload();
+  if(b.dataset.auto){const name=b.dataset.auto;const on=b.getAttribute('aria-pressed')!=='true';
+    const ask=on?'Turn auto-posting on for '+name+'? Approved posts still to come go to the gateway and post on their own.':'Turn auto-posting off for '+name+'? Posts waiting at the gateway are canceled; they stay on reminders for you to post.';
+    if(!confirm(ask))return;
+    const r=await fetch('/auto',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channel:name,auto:on})});
+    if(!r.ok)return toast('Not saved: '+(await r.text()));
+    b.setAttribute('aria-pressed',on);b.classList.toggle('on',on);b.textContent=name+(on?' on':' off');return toast(name+' auto-posting '+(on?'on':'off'))}
   if(b.dataset.copy!==undefined)return copy(b.dataset.copy);
   if(b.dataset.open){copy(b.closest('.card').querySelector('.block pre').textContent);window.open(b.dataset.open,'_blank','noopener');return}
   if(b.hasAttribute('data-copyblock'))return copy(b.closest('.block').querySelector('pre').textContent);
   const act=b.dataset.act;if(!act)return;
   const card=b.closest('.card');const body={file:card.dataset.file,status:act};
+  if(act==='relink'){const n=prompt('Link to the live post',b.dataset.link||'');if(n===null)return;Object.assign(body,{status:'out',relink:true});if(n.trim())body.out_url=n.trim();
+    const r=await fetch('/decide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!r.ok)return toast('Not saved: '+(await r.text()));
+    b.dataset.link=n.trim();const row=[...card.querySelectorAll('.words .row')].find((x)=>x.querySelector('b')?.textContent==='Posted');
+    if(row){const l=row.querySelector('a');if(n.trim()){l.href=n.trim();l.textContent=n.trim()}else row.remove()}
+    return toast(n.trim()?'Link saved':'Link removed')}
+  if(act==='unpost'){const n=prompt('Not posted after all? It goes back to approved, without its link. A note (optional):');if(n===null)return;Object.assign(body,{status:'approved',unpost:true});if(n)body.note=n;
+    const r=await fetch('/decide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});if(!r.ok)return toast('Not saved: '+(await r.text()));
+    [...card.querySelectorAll('.words .row')].find((x)=>x.querySelector('b')?.textContent==='Posted')?.remove();
+    const s=card.querySelector('.status');s.textContent='approved';s.className='status s-approved';card.dataset.status='approved';toast('Back to approved');render();return}
   if(act==='changes'){const n=prompt('What should change?');if(!n)return;body.note=n}
   if(act==='rejected'&&b.dataset.note)body.note=b.dataset.note;
   else if(act==='rejected'){const n=prompt('Why? (optional, helps next time)');if(n===null)return;if(n)body.note=n}

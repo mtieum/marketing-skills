@@ -44,6 +44,11 @@ export function setMeta(ws, file, changes) {
   if (!m) throw new Error('no front matter');
   let fm = m[1];
   for (const [k, v] of Object.entries(changes)) {
+    // null removes the field (a post marked "not posted" loses its link).
+    if (v === null) {
+      fm = fm.replace(new RegExp(`^${k}:.*(?:\\n|$)`, 'm'), '').replace(/\n$/, '');
+      continue;
+    }
     const line = `${k}: ${/[:#"\[\]]|^\s|\s$/.test(v) ? JSON.stringify(v) : v}`;
     const re = new RegExp(`^${k}:.*$`, 'm');
     fm = re.test(fm) ? fm.replace(re, line) : `${fm}\n${line}`;
@@ -71,8 +76,13 @@ export function cleanUrl(u) {
 }
 
 /** A decision as front-matter changes: what the board writes, locally or after a sync. */
-export function decisionChanges({ status, note, out_url, at }) {
-  const day = (at ? new Date(at) : new Date()).toISOString().slice(0, 10);
+export function decisionChanges({ status, note, out_url, at, relink, unpost }) {
+  const when = at ? new Date(at) : new Date();
+  const day = when.toISOString().slice(0, 10);
+  // A posted item's link corrected: the day it went out stays.
+  if (relink && status === 'out') return { status: 'out', out_url: out_url ? cleanUrl(String(out_url)) : null };
+  // Marked posted by mistake: back to approved, without the link; `unposted` lets the board take it back.
+  if (unpost) return { status: 'approved', decided: day, out: null, out_url: null, unposted: when.toISOString(), ...(note ? { owner_note: String(note).replace(/\n/g, ' ') } : {}) };
   const changes = { status, decided: day };
   if (note) changes.owner_note = String(note).replace(/\n/g, ' ');
   if (out_url) changes.out_url = cleanUrl(String(out_url));

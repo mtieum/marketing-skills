@@ -9,6 +9,7 @@
 //   decisions/<id>.json   decisions made here, waiting for the next sync
 //   subs/<hash>.json      push subscriptions (one per phone or browser)
 //   notified/<id>         reminders already sent
+//   auto.json             auto-posting turned on or off here, per channel, until a sync writes it into publish.json
 import { DONE, calendar, page, title } from '../../tools/board-page.mjs';
 import { gatewayCallback, gatewayStates, mediaAllowed, syncGateway } from './gateway.mjs';
 
@@ -62,9 +63,21 @@ button{background:#8aa8ff;color:#141413;font-weight:600;border:0}p{color:#ff8a80
 <input type="password" name="password" placeholder="Password" autocomplete="current-password" required autofocus><button>Sign in</button></form></body></html>`);
 
 // --- The queue -------------------------------------------------------------
+/** Auto-posting switched on the board, { instagram: { auto, at } }, laid over publish.json. */
+const readAuto = async (env) => (await (await env.BUCKET.get('auto.json'))?.json()) ?? {};
+function applyAuto(q, auto) {
+  for (const [name, { auto: on }] of Object.entries(auto)) {
+    const ch = q.publish?.channels?.[name];
+    if (ch) ch.auto = on;
+  }
+}
+/** The channels a gateway can post to, for the switches: connected ones only (they have an id). */
+const channelsOf = (q) => Object.entries(q.publish?.channels ?? {}).filter(([, c]) => c?.id).map(([name, c]) => ({ name, auto: !!c.auto }));
+
 async function loadQueue(env) {
   const obj = await env.BUCKET.get('queue.json');
   const q = obj ? await obj.json() : { items: [] };
+  applyAuto(q, await readAuto(env));
   // Decisions made here since the last sync, laid over the items so the page shows them now.
   const list = await env.BUCKET.list({ prefix: 'decisions/' });
   const decisions = await Promise.all(list.objects.map(async (o) => (await env.BUCKET.get(o.key))?.json()));
@@ -74,6 +87,8 @@ async function loadQueue(env) {
     it.meta.status = d.status;
     if (d.note) it.meta.owner_note = d.note;
     if (d.out_url) it.meta.out_url = d.out_url;
+    if (d.relink && !d.out_url) delete it.meta.out_url;
+    if (d.unpost) { delete it.meta.out_url; delete it.meta.out; it.meta.unposted = d.at; }
   }
   return q;
 }
@@ -207,6 +222,17 @@ async function syncApi(req, env, url) {
   if (key && !/^a\/[\w.-]+$/.test(key)) return text('bad key', 400);
   const route = `${req.method} ${url.pathname}`;
   switch (route) {
+    case 'GET /api/sync/auto':
+      return json(await readAuto(env));
+    case 'POST /api/sync/auto-ack': {
+      // Only the switches the sync wrote into publish.json: one flipped since then stays.
+      const { done = {} } = await req.json();
+      const auto = await readAuto(env);
+      for (const [name, at] of Object.entries(done)) if (auto[name]?.at === at) delete auto[name];
+      if (Object.keys(auto).length) await env.BUCKET.put('auto.json', JSON.stringify(auto));
+      else await env.BUCKET.delete('auto.json');
+      return json({ left: Object.keys(auto).length });
+    }
     case 'GET /api/sync/decisions': {
       const list = await env.BUCKET.list({ prefix: 'decisions/' });
       return json(await Promise.all(list.objects.map(async (o) => ({ key: o.key, ...(await (await env.BUCKET.get(o.key)).json()) }))));
@@ -235,7 +261,9 @@ async function syncApi(req, env, url) {
         if (!p) continue;
         const named = [].concat(i.meta?.assets ?? []);
         for (const a of named) if (!i.assetKeys?.[a] && p.assetKeys?.[a]) (i.assetKeys ??= {})[a] = p.assetKeys[a];
-        if (p.meta?.status === 'out' && i.meta?.status !== 'out') {
+        // …unless the owner took it back ("Not posted") since it went out.
+        const takenBack = i.meta?.unposted && String(i.meta.unposted) >= String(p.meta?.out ?? '');
+        if (p.meta?.status === 'out' && i.meta?.status !== 'out' && !takenBack) {
           for (const k of ['status', 'out', 'out_url', 'decided', 'owner_note']) if (p.meta[k] !== undefined) i.meta[k] = p.meta[k];
         }
       }
@@ -297,7 +325,7 @@ export default {
     if (req.method === 'GET' && url.pathname === '/') {
       const q = await loadQueue(env);
       await gatewayStates(env, q);
-      return html(page(q.items, { cloud: true, vapidPublic: env.VAPID_PUBLIC }));
+      return html(page(q.items, { cloud: true, vapidPublic: env.VAPID_PUBLIC, channels: q.publish?.gateway && env.GATEWAY_KEY ? channelsOf(q) : [] }));
     }
     if (req.method === 'GET' && url.pathname === '/asset') return serveAsset(req, env, url);
     if (req.method === 'GET' && url.pathname === '/reminders.ics') {
@@ -305,12 +333,25 @@ export default {
       return new Response(calendar(q.items, url.origin), { headers: { 'content-type': 'text/calendar; charset=utf-8', 'content-disposition': 'attachment; filename="posts-to-do.ics"' } });
     }
     if (req.method === 'POST' && url.pathname === '/decide') {
-      const { file, status, note, out_url } = await req.json();
+      const { file, status, note, out_url, relink, unpost } = await req.json();
       if (!STATUSES.has(status)) return text('unknown status', 400);
+      if (relink && status !== 'out') return text('only a posted item has a link to edit', 400);
+      if (unpost && status !== 'approved') return text('not posted goes back to approved', 400);
       const q = await loadQueue(env);
       const it = q.items.find((i) => i.file === file);
       if (!it) return text('unknown item', 400);
-      await env.BUCKET.put(`decisions/${idOf(it)}.json`, JSON.stringify({ file, id: idOf(it), status, note, out_url, at: new Date().toISOString() }));
+      await env.BUCKET.put(`decisions/${idOf(it)}.json`, JSON.stringify({ file, id: idOf(it), status, note, out_url, ...(relink ? { relink: true } : {}), ...(unpost ? { unpost: true } : {}), at: new Date().toISOString() }));
+      return text('ok');
+    }
+    if (req.method === 'POST' && url.pathname === '/auto') {
+      // Auto-posting for one channel, on or off. Off cancels what the gateway has waiting at the next
+      // cron; on hands it the approved posts still to come.
+      const { channel, auto } = await req.json();
+      const q = await loadQueue(env);
+      if (typeof auto !== 'boolean' || !channelsOf(q).some((c) => c.name === channel)) return text('not a connected channel', 400);
+      const all = await readAuto(env);
+      all[channel] = { auto, at: new Date().toISOString() };
+      await env.BUCKET.put('auto.json', JSON.stringify(all));
       return text('ok');
     }
     if (req.method === 'POST' && url.pathname === '/api/push/subscribe') {
