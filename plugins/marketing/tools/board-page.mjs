@@ -93,6 +93,7 @@ function card(item, n, opts) {
     <header role="button" tabindex="0" aria-expanded="false" title="Open or fold this post">
       <span class="fold" aria-hidden="true">▸</span>
       <span class="n">${n}</span>
+      <span class="name">${esc(nameOf(item))}</span>
       <span class="todo"></span>
       <span class="chan">${esc(meta.channel ?? '?')}</span>
       <span class="when">${esc(dayFirst(meta.due))}${meta.due && meta.time ? ', ' : ''}${esc(meta.time ?? '')}</span>
@@ -126,6 +127,20 @@ function card(item, n, opts) {
   </article>`;
 }
 
+/**
+ * What the post is about, to tell cards apart at a glance: its `title:` when it has one, a reply's
+ * thread title, else its id without the date and channel ("2026-11-16-instagram-wroclaw" → "Wroclaw").
+ */
+export function nameOf(it) {
+  const m = it.meta;
+  if (m.title) return String(m.title);
+  if (m.kind === 'reply' && m.thread_title) return String(m.thread_title);
+  const rest = String(m.id ?? it.file).replace(/\.md$/, '').replace(/^\d{4}-\d{2}-\d{2}-/, '');
+  const chan = String(m.channel ?? '').toLowerCase();
+  const words = (chan && rest.toLowerCase().startsWith(`${chan}-`) ? rest.slice(chan.length + 1) : rest).split('-').filter(Boolean);
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || rest;
+}
+
 /** A short name for an item: its channel and the last word of its id ("instagram · prague"). */
 export const title = (it) => `${it.meta.channel ?? '?'} · ${String(it.meta.id ?? it.file).replace(/\.md$/, '').split('-').slice(-1)[0]}`;
 
@@ -155,6 +170,7 @@ main{max-width:1100px;margin:0 auto;padding:8px 16px 80px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
 .card.isdone{opacity:.6}
 .card header{cursor:pointer;user-select:none}.card:not(.open) header{border-bottom:0}.card:not(.open) .body{display:none}
+.name{font-weight:700;font-size:14.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fold{display:inline-block;width:12px;color:var(--muted);transition:transform .15s}.card.open .fold{transform:rotate(90deg)}
 .peek{flex:1 1 100%;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card.open .peek{display:none}
 .card header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px}
