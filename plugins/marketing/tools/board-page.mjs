@@ -86,9 +86,12 @@ function card(item, n, opts) {
       <div class="block-head"><span>${esc(b.label || 'Text to paste')}</span><button data-copyblock>Copy</button></div>
       <pre>${esc(b.body)}</pre>
     </div>`).join('');
+  const first = copyBlocks(item.text)[0]?.body ?? '';
+  const peek = first.replace(/\s+/g, ' ').trim().slice(0, 140);
   return `
   <article class="card" id="${esc(meta.id ?? item.file.replace(/\.md$/, ''))}" data-status="${esc(meta.status ?? 'draft')}" data-channel="${esc(meta.channel)}" data-file="${esc(item.file)}" data-due="${esc(meta.due ?? '')}" data-time="${esc(meta.time ?? '')}" data-title="${esc(title(item))}" data-auto="${esc(meta.auto ?? '')}" data-gateway="${esc(meta.gateway ?? '')}" data-gateway-error="${esc(meta.gateway_error ?? '')}" data-kind="${esc(meta.kind ?? '')}">
-    <header>
+    <header role="button" tabindex="0" aria-expanded="false" title="Open or fold this post">
+      <span class="fold" aria-hidden="true">▸</span>
       <span class="n">${n}</span>
       <span class="todo"></span>
       <span class="chan">${esc(meta.channel ?? '?')}</span>
@@ -96,6 +99,7 @@ function card(item, n, opts) {
       <span class="status s-${esc(meta.status)}">${esc(meta.status ?? 'draft')}</span>
       ${verdicts(v, meta.status)}
       <span class="id">${esc(meta.id ?? item.file)}</span>
+      ${peek ? `<span class="peek">${esc(peek)}</span>` : ''}
     </header>
     <div class="body">
       ${media ? `<div class="media">${media}</div>` : ''}
@@ -150,6 +154,9 @@ main{max-width:1100px;margin:0 auto;padding:8px 16px 80px}
 .empty{color:var(--muted);padding:40px 0;text-align:center}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
 .card.isdone{opacity:.6}
+.card header{cursor:pointer;user-select:none}.card:not(.open) header{border-bottom:0}.card:not(.open) .body{display:none}
+.fold{display:inline-block;width:12px;color:var(--muted);transition:transform .15s}.card.open .fold{transform:rotate(90deg)}
+.peek{flex:1 1 100%;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.card.open .peek{display:none}
 .card header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px}
 .n{font-weight:700}.chan{font-weight:600;text-transform:capitalize}.when{color:var(--muted)}.id{color:var(--muted);margin-left:auto;font-family:ui-monospace,monospace;font-size:12px}
 .todo:empty{display:none}.todo{font-weight:650;border-radius:6px;padding:1px 8px;background:var(--tab)}.todo.late{color:var(--bad)}
@@ -177,6 +184,7 @@ button:hover,.btn:hover{border-color:var(--accent)}.share{font-weight:600}button
     ${(opts.channels ?? []).length ? `<span class="autos" title="Auto-posting through the gateway, per channel: off keeps that channel on reminders">Auto-post ${opts.channels.map((c) => `<button class="auto${c.auto ? ' on' : ''}" data-auto="${esc(c.name)}" aria-pressed="${c.auto}">${esc(c.name)} ${c.auto ? 'on' : 'off'}</button>`).join(' ')}</span>` : ''}
     <button id="notify" title="Browser notifications 15 minutes before each post, while this page is open">Notify me</button>
     <a class="btn" href="/reminders.ics" title="Every post still to do, with a 15-minute alarm: open it to add to your calendar">Add to calendar</a>
+    <button id="folds" class="ghost">Open all</button>
     <button id="reload" class="ghost">Reload</button></div>
   <div class="next hide" id="next"></div>
   <nav class="sections hide" id="sections"></nav>
@@ -197,6 +205,11 @@ const isDone=(c)=>DONE.has(c.dataset.status);
 const needsYes=(c)=>['draft','checked','changes'].includes(c.dataset.status);
 const toast=(t)=>{const e=document.getElementById('toast');e.textContent=t;e.classList.add('on');setTimeout(()=>e.classList.remove('on'),1600)};
 const copy=async(t)=>{try{await navigator.clipboard.writeText(t);toast('Copied')}catch{toast('Copy failed: select and copy by hand')}};
+const OPEN_KEY='board-open';
+/** Open a card (or fold it); which are open is kept on this device. */
+function setOpen(c,on){c.classList.toggle('open',on);c.querySelector('header').setAttribute('aria-expanded',on);
+  const o=new Set(store.get(OPEN_KEY,[]));on?o.add(c.id):o.delete(c.id);store.set(OPEN_KEY,[...o].filter((id)=>document.getElementById(id)));foldsLabel()}
+function foldsLabel(){const b=document.getElementById('folds');const vis=cards.filter((c)=>!c.classList.contains('hide'));b.textContent=vis.length&&vis.every((c)=>c.classList.contains('open'))?'Fold all':'Open all'}
 const store={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
 function ago(ms){const m=Math.round(Math.abs(ms)/60000);if(m<60)return m+' min';const h=Math.floor(m/60);if(h<48)return h+' h'+(m%60?' '+(m%60)+' min':'');return Math.round(h/24)+' days'}
 function dayName(d){const t=ymd(new Date()),tm=ymd(new Date(Date.now()+864e5));if(d===t)return 'Today';if(d===tm)return 'Tomorrow';
@@ -244,6 +257,7 @@ function render(){
   cards.forEach(c=>c.classList.add('hide'));
   for(const c of shown){c.classList.remove('hide');c.classList.toggle('isdone',isDone(c));main.insertBefore(c,document.getElementById('empty'))}
   document.getElementById('empty').classList.toggle('hide',shown.length>0);
+  foldsLabel();
   label();
 }
 /** Each card's to-do line, and the "next up" bar. */
@@ -278,7 +292,7 @@ function label(){
   bar.innerHTML='<b>Next up:</b> '+next.dataset.title+' · '+dayName(next.dataset.due)+' '+(next.dataset.time||'')+' <span class="in">('+(d<0?'due '+ago(d)+' ago':'in '+ago(d))+(needsYes(next)?', needs your approval first':'')+')</span>';
 }
 document.getElementById('next').addEventListener('click',(e)=>{const id=e.currentTarget.dataset.go;const c=document.getElementById(id);if(!c)return;
-  if(c.classList.contains('hide')){section='posts';current=c.dataset.due||'all';render()}c.scrollIntoView({behavior:'smooth',block:'start'})});
+  if(c.classList.contains('hide')){section='posts';current=c.dataset.due||'all';render()}setOpen(c,true);c.scrollIntoView({behavior:'smooth',block:'start'})});
 
 // Reminders while the page is open (the calendar file covers the rest).
 function remind(){
@@ -288,7 +302,7 @@ function remind(){
   for(const c of cards){const w=when(c);if(isDone(c)||!w)continue;
     if(now>=w-LEAD*60000&&now<w+60*60000&&!sent[c.id]){sent[c.id]=1;
       const n=new Notification('Post at '+(c.dataset.time||'')+': '+c.dataset.title,{body:needsYes(c)?'Still needs your approval.':'Open the board to copy the text.',tag:c.id});
-      n.onclick=()=>{window.focus();current=c.dataset.due;render();c.scrollIntoView()}}}
+      n.onclick=()=>{window.focus();current=c.dataset.due;render();setOpen(c,true);c.scrollIntoView()}}}
   store.set('board-reminded',sent);
 }
 const b64=(s)=>{const p='='.repeat((4-s.length%4)%4);const r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
@@ -327,6 +341,7 @@ document.addEventListener('click',async(e)=>{
   if(b.dataset.tab){current=b.dataset.tab;render();window.scrollTo(0,0);return}
   if(b.dataset.section){section=b.dataset.section;store.set('board-section',section);current=null;render();window.scrollTo(0,0);return}
   if(b.id==='reload')return location.reload();
+  if(b.id==='folds'){const vis=cards.filter((c)=>!c.classList.contains('hide'));const on=!vis.every((c)=>c.classList.contains('open'));vis.forEach((c)=>setOpen(c,on));return}
   if(b.dataset.auto){const name=b.dataset.auto;const on=b.getAttribute('aria-pressed')!=='true';
     const ask=on?'Turn auto-posting on for '+name+'? Approved posts still to come go to the gateway and post on their own.':'Turn auto-posting off for '+name+'? Posts waiting at the gateway are canceled; they stay on reminders for you to post.';
     if(!confirm(ask))return;
@@ -357,7 +372,13 @@ document.addEventListener('click',async(e)=>{
 });
 if(location.hash){const c=document.getElementById(location.hash.slice(1));if(c){section=isReply(c)?'replies':'posts';current=c.dataset.due||'all'}}
 render();
-if(location.hash)document.getElementById(location.hash.slice(1))?.scrollIntoView();
+// Folded to one line each, but the ones opened on this device and the one a link points at.
+{const o=new Set(store.get(OPEN_KEY,[]));for(const c of cards)if(o.has(c.id))c.classList.add('open'),c.querySelector('header').setAttribute('aria-expanded','true')}
+if(location.hash){const c=document.getElementById(location.hash.slice(1));if(c){setOpen(c,true);c.scrollIntoView()}}
+foldsLabel();
+// A tap on a card's header opens or folds it (links and buttons in it keep their own job).
+document.addEventListener('click',(e)=>{const h=e.target.closest('.card > header');if(!h||e.target.closest('a,button'))return;const c=h.parentElement;setOpen(c,!c.classList.contains('open'))});
+document.addEventListener('keydown',(e)=>{const h=e.target.closest?.('.card > header');if(!h||(e.key!=='Enter'&&e.key!==' '))return;e.preventDefault();const c=h.parentElement;setOpen(c,!c.classList.contains('open'))});
 </script></body></html>`;
 }
 
